@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/api_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -12,14 +13,38 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
 
-  void _login() {
+  void _login() async {
+    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please fill in all fields!')),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
-    // TODO: connect to Laravel API later
-    Future.delayed(const Duration(seconds: 1), () {
+    try {
+      final response = await ApiService.login(
+        _emailController.text,
+        _passwordController.text,
+      );
+
+      if (response['token'] != null) {
+        await ApiService.saveToken(response['token']);
+        setState(() => _isLoading = false);
+        Navigator.pushReplacementNamed(context, '/main');
+      } else {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(response['message'] ?? 'Login failed!')),
+        );
+      }
+    } catch (e) {
       setState(() => _isLoading = false);
-      Navigator.pushReplacementNamed(context, '/home');
-    });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Connection error! Is the server running?')),
+      );
+    }
   }
 
   @override
@@ -33,10 +58,6 @@ class _LoginScreenState extends State<LoginScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Logo
-              Image.asset('assets/logo.png', height: 80),
-              const SizedBox(height: 24),
-
               // Title
               const Text(
                 'Please Log in to\nGeoFlow',
