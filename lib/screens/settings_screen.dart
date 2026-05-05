@@ -206,23 +206,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Icons.chevron_right,
                 color: Colors.black38,
               ),
-              onTap: () {
-                showDialog(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    title: const Text('Help & Support'),
-                    content: const Text(
-                      'For support, please contact:\nsupport@geoflow.com',
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('Close'),
-                      ),
-                    ],
-                  ),
-                );
-              },
+              onTap: () => Navigator.pushNamed(context, '/help'),
+
             ),
           ),
 
