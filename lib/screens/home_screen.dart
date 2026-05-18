@@ -18,7 +18,7 @@ class HomeScreen extends StatelessWidget {
             child: Icon(Icons.person, color: Colors.white),
           ),
         ),
-        title: Image.asset('assets/logo.png', height: 40),
+        title: Image.asset('assets/lightmodelogo.png', height: 40),
         centerTitle: true,
         actions: [
           IconButton(
