@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 import '../services/api_service.dart';
 
 class ManageLeaksScreen extends StatefulWidget {
@@ -27,7 +28,6 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen> {
 
   Future<void> _getLocation() async {
     try {
-      // Check permission
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
@@ -42,14 +42,22 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen> {
         return;
       }
 
-      // Get position
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
 
+      // Convert coordinates to address
+      List<Placemark> placemarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+
+      Placemark place = placemarks[0];
+      String address = '${place.locality}, ${place.administrativeArea}';
+
       setState(() {
         _position = position;
-        _locationText = '${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}';
+        _locationText = address;
       });
     } catch (e) {
       setState(() => _locationText = 'Could not get location');
@@ -88,17 +96,14 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen> {
         Uri.parse('${ApiService.baseUrl}/reports'),
       );
 
-      // Auth header
       request.headers['Authorization'] = 'Bearer $token';
       request.headers['Accept'] = 'application/json';
 
-      // Fields
       request.fields['full_name'] = _fullNameController.text;
       request.fields['location'] = _locationText;
       request.fields['lat'] = _position!.latitude.toString();
       request.fields['lng'] = _position!.longitude.toString();
 
-      // Image
       request.files.add(
         await http.MultipartFile.fromPath('image', widget.image!.path),
       );
@@ -247,7 +252,6 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen> {
                       style: const TextStyle(fontSize: 13),
                     ),
                   ),
-                  // Refresh button
                   IconButton(
                     icon: const Icon(Icons.refresh, size: 18),
                     onPressed: _getLocation,
