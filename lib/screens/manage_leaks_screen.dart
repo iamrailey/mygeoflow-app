@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
+import 'package:http/http.dart' as http;
+import '../services/api_service.dart';
 
 class ManageLeaksScreen extends StatefulWidget {
   final File? image;
@@ -12,32 +14,73 @@ class ManageLeaksScreen extends StatefulWidget {
 
 class _ManageLeaksScreenState extends State<ManageLeaksScreen> {
   final _fullNameController = TextEditingController();
-  final _contactController = TextEditingController();
+  final _locationController = TextEditingController();
   bool _isLoading = false;
 
-  void _submitReport() {
-    if (_fullNameController.text.isEmpty || _contactController.text.isEmpty) {
+  void _submitReport() async {
+    if (_fullNameController.text.isEmpty || _locationController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please fill in all fields!')),
       );
       return;
     }
 
+    if (widget.image == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please take a photo first!')),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
-    Future.delayed(const Duration(seconds: 1), () {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Report submitted successfully!')),
+    try {
+      final token = await ApiService.getToken();
+
+      var request = http.MultipartRequest(
+        'POST',
+        Uri.parse('${ApiService.baseUrl}/reports'),
       );
-      Navigator.pushReplacementNamed(context, '/main');
-    });
+
+      // Auth header
+      request.headers['Authorization'] = 'Bearer $token';
+      request.headers['Accept'] = 'application/json';
+
+      // Fields
+      request.fields['full_name'] = _fullNameController.text;
+      request.fields['location'] = _locationController.text;
+
+      // Image
+      request.files.add(
+        await http.MultipartFile.fromPath('image', widget.image!.path),
+      );
+
+      final response = await request.send();
+      final responseBody = await response.stream.bytesToString();
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Report submitted successfully!')),
+        );
+        Navigator.pushReplacementNamed(context, '/main');
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed: $responseBody')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
+    } finally {
+      setState(() => _isLoading = false);
+    }
   }
 
   @override
   void dispose() {
     _fullNameController.dispose();
-    _contactController.dispose();
+    _locationController.dispose();
     super.dispose();
   }
 
@@ -133,17 +176,16 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Contact Number
+            // Location
             const Text(
-              'Contact Number',
+              'Location',
               style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
             ),
             const SizedBox(height: 8),
             TextField(
-              controller: _contactController,
-              keyboardType: TextInputType.phone,
+              controller: _locationController,
               decoration: InputDecoration(
-                hintText: 'e.g. 1015 123 456',
+                hintText: 'e.g. Diliman, Quezon City',
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
