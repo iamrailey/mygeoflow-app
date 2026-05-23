@@ -36,7 +36,6 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen> {
     });
 
     try {
-      // 1. Check GPS is on
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         setState(() {
@@ -46,7 +45,6 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen> {
         return;
       }
 
-      // 2. Check/request permission
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
@@ -68,12 +66,10 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen> {
 
       Position? position;
 
-      // 3. Try last known position first (instant)
       try {
         position = await Geolocator.getLastKnownPosition();
       } catch (_) {}
 
-      // 4. Try high accuracy with short timeout
       if (position == null) {
         try {
           position = await Geolocator.getCurrentPosition(
@@ -83,7 +79,6 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen> {
         } catch (_) {}
       }
 
-      // 5. Last resort: lowest accuracy, longer timeout
       if (position == null) {
         try {
           position = await Geolocator.getCurrentPosition(
@@ -101,27 +96,52 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen> {
         return;
       }
 
-      // 6. Reverse geocode
-      String address;
-      try {
-        List<Placemark> placemarks = await placemarkFromCoordinates(
-          position.latitude,
-          position.longitude,
-        );
-        if (placemarks.isNotEmpty) {
-          Placemark place = placemarks[0];
-          final parts = [place.street, place.locality, place.administrativeArea]
-              .where((p) => p != null && p.isNotEmpty)
-              .toList();
-          address = parts.isNotEmpty
-              ? parts.join(', ')
-              : '${position.latitude.toStringAsFixed(6)}, ${position.longitude.toStringAsFixed(6)}';
-        } else {
-          address = '${position.latitude.toStringAsFixed(6)}, ${position.longitude.toStringAsFixed(6)}';
+      // Reverse geocode with 3 retries
+      String address = '';
+      for (int attempt = 0; attempt < 3; attempt++) {
+        try {
+          List<Placemark> placemarks = await placemarkFromCoordinates(
+            position.latitude,
+            position.longitude,
+          );
+
+          if (placemarks.isNotEmpty) {
+            Placemark place = placemarks[0];
+
+            final List<String> parts = [];
+            if (place.street != null && place.street!.isNotEmpty) {
+              parts.add(place.street!);
+            }
+            if (place.subLocality != null && place.subLocality!.isNotEmpty) {
+              parts.add(place.subLocality!);
+            }
+            if (place.locality != null && place.locality!.isNotEmpty) {
+              parts.add(place.locality!);
+            }
+            if (place.subAdministrativeArea != null &&
+                place.subAdministrativeArea!.isNotEmpty &&
+                place.subAdministrativeArea != place.locality) {
+              parts.add(place.subAdministrativeArea!);
+            }
+            if (place.administrativeArea != null &&
+                place.administrativeArea!.isNotEmpty) {
+              parts.add(place.administrativeArea!);
+            }
+
+            if (parts.isNotEmpty) {
+              address = parts.join(', ');
+              break;
+            }
+          }
+        } catch (_) {
+          await Future.delayed(const Duration(seconds: 1));
         }
-      } catch (_) {
-        // Geocoding failed but we still have coordinates — that's fine
-        address = '${position.latitude.toStringAsFixed(6)}, ${position.longitude.toStringAsFixed(6)}';
+      }
+
+      // Fallback to coordinates if all retries failed
+      if (address.isEmpty) {
+        address =
+        '${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}';
       }
 
       setState(() {
@@ -162,7 +182,7 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // ── Step 1: ML service check ──────────────────────────────────────
+      // Step 1: ML service check
       var mlRequest = http.MultipartRequest(
         'POST',
         Uri.parse('http://3.27.75.51:5000/predict'),
@@ -179,7 +199,14 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen> {
         showDialog(
           context: context,
           builder: (_) => AlertDialog(
-            title: const Text('Not a Leak'),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
+                SizedBox(width: 8),
+                Text('Not a Leak'),
+              ],
+            ),
             content: Text(
               'The image does not appear to be a water leak.\n'
                   'Confidence: ${mlData['confidence']}%\n\n'
@@ -196,7 +223,7 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen> {
         return;
       }
 
-      // ── Step 2: Submit to Laravel with lat/lng ────────────────────────
+      // Step 2: Submit to Laravel
       final token = await ApiService.getToken();
 
       var request = http.MultipartRequest(
@@ -263,7 +290,7 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen> {
         child: SafeArea(
           child: Column(
             children: [
-              // ── AppBar ─────────────────────────────────────────────────
+              // AppBar
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
                 child: Row(
