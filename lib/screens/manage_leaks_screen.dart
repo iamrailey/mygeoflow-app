@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:geolocator/geolocator.dart';
 import '../services/api_service.dart';
 
 class ManageLeaksScreen extends StatefulWidget {
@@ -14,13 +15,51 @@ class ManageLeaksScreen extends StatefulWidget {
 
 class _ManageLeaksScreenState extends State<ManageLeaksScreen> {
   final _fullNameController = TextEditingController();
-  final _locationController = TextEditingController();
   bool _isLoading = false;
+  Position? _position;
+  String _locationText = 'Fetching location...';
+
+  @override
+  void initState() {
+    super.initState();
+    _getLocation();
+  }
+
+  Future<void> _getLocation() async {
+    try {
+      // Check permission
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          setState(() => _locationText = 'Location permission denied');
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        setState(() => _locationText = 'Location permission permanently denied');
+        return;
+      }
+
+      // Get position
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      setState(() {
+        _position = position;
+        _locationText = '${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}';
+      });
+    } catch (e) {
+      setState(() => _locationText = 'Could not get location');
+    }
+  }
 
   void _submitReport() async {
-    if (_fullNameController.text.isEmpty || _locationController.text.isEmpty) {
+    if (_fullNameController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill in all fields!')),
+        const SnackBar(content: Text('Please enter your full name!')),
       );
       return;
     }
@@ -28,6 +67,13 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen> {
     if (widget.image == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please take a photo first!')),
+      );
+      return;
+    }
+
+    if (_position == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Waiting for GPS location...')),
       );
       return;
     }
@@ -48,7 +94,9 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen> {
 
       // Fields
       request.fields['full_name'] = _fullNameController.text;
-      request.fields['location'] = _locationController.text;
+      request.fields['location'] = _locationText;
+      request.fields['lat'] = _position!.latitude.toString();
+      request.fields['lng'] = _position!.longitude.toString();
 
       // Image
       request.files.add(
@@ -80,7 +128,6 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen> {
   @override
   void dispose() {
     _fullNameController.dispose();
-    _locationController.dispose();
     super.dispose();
   }
 
@@ -176,19 +223,36 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Location
+            // GPS Location (auto)
             const Text(
-              'Location',
+              'Location (GPS)',
               style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
             ),
             const SizedBox(height: 8),
-            TextField(
-              controller: _locationController,
-              decoration: InputDecoration(
-                hintText: 'e.g. Diliman, Quezon City',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey.shade400),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.location_on, color: Colors.teal, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _locationText,
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                  // Refresh button
+                  IconButton(
+                    icon: const Icon(Icons.refresh, size: 18),
+                    onPressed: _getLocation,
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 32),
