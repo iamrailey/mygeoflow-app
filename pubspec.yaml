@@ -63,7 +63,7 @@ flutter:
   # the material Icons class.
   uses-material-design: true
   assets:
-    - assets/lightmodelogo.png
+   # - assets/lightmodelogo.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:

@@ -4,7 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
   // For Android emulator, 10.0.2.2 points to your PC's localhost
-  static const String baseUrl = 'http://10.0.2.2:8000/api';
+  static const String baseUrl = 'http://3.27.95.24/api';
 
   // Register
   static Future<Map<String, dynamic>> register(
