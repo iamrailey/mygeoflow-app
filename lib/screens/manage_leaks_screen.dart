@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
+import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
@@ -17,6 +18,7 @@ class ManageLeaksScreen extends StatefulWidget {
 class _ManageLeaksScreenState extends State<ManageLeaksScreen> {
   final _fullNameController = TextEditingController();
   bool _isLoading = false;
+  bool _locationLoading = false;
   Position? _position;
   String _locationText = 'Fetching location...';
 
@@ -27,40 +29,111 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen> {
   }
 
   Future<void> _getLocation() async {
+    setState(() {
+      _locationLoading = true;
+      _locationText = 'Fetching location...';
+      _position = null;
+    });
+
     try {
+      // 1. Check GPS is on
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        setState(() {
+          _locationText = 'Location services disabled. Please enable GPS.';
+          _locationLoading = false;
+        });
+        return;
+      }
+
+      // 2. Check/request permission
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
-          setState(() => _locationText = 'Location permission denied');
+          setState(() {
+            _locationText = 'Location permission denied.';
+            _locationLoading = false;
+          });
           return;
         }
       }
-
       if (permission == LocationPermission.deniedForever) {
-        setState(() => _locationText = 'Location permission permanently denied');
+        setState(() {
+          _locationText = 'Permission permanently denied. Enable in app settings.';
+          _locationLoading = false;
+        });
         return;
       }
 
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
+      Position? position;
 
-      // Convert coordinates to address
-      List<Placemark> placemarks = await placemarkFromCoordinates(
-        position.latitude,
-        position.longitude,
-      );
+      // 3. Try last known position first (instant)
+      try {
+        position = await Geolocator.getLastKnownPosition();
+      } catch (_) {}
 
-      Placemark place = placemarks[0];
-      String address = '${place.locality}, ${place.administrativeArea}';
+      // 4. Try high accuracy with short timeout
+      if (position == null) {
+        try {
+          position = await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.medium,
+            timeLimit: const Duration(seconds: 20),
+          );
+        } catch (_) {}
+      }
+
+      // 5. Last resort: lowest accuracy, longer timeout
+      if (position == null) {
+        try {
+          position = await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.lowest,
+            timeLimit: const Duration(seconds: 30),
+          );
+        } catch (_) {}
+      }
+
+      if (position == null) {
+        setState(() {
+          _locationText = 'Could not get location. Tap ↻ to retry.';
+          _locationLoading = false;
+        });
+        return;
+      }
+
+      // 6. Reverse geocode
+      String address;
+      try {
+        List<Placemark> placemarks = await placemarkFromCoordinates(
+          position.latitude,
+          position.longitude,
+        );
+        if (placemarks.isNotEmpty) {
+          Placemark place = placemarks[0];
+          final parts = [place.street, place.locality, place.administrativeArea]
+              .where((p) => p != null && p.isNotEmpty)
+              .toList();
+          address = parts.isNotEmpty
+              ? parts.join(', ')
+              : '${position.latitude.toStringAsFixed(6)}, ${position.longitude.toStringAsFixed(6)}';
+        } else {
+          address = '${position.latitude.toStringAsFixed(6)}, ${position.longitude.toStringAsFixed(6)}';
+        }
+      } catch (_) {
+        // Geocoding failed but we still have coordinates — that's fine
+        address = '${position.latitude.toStringAsFixed(6)}, ${position.longitude.toStringAsFixed(6)}';
+      }
 
       setState(() {
         _position = position;
         _locationText = address;
+        _locationLoading = false;
       });
     } catch (e) {
-      setState(() => _locationText = 'Could not get location');
+      setState(() {
+        _locationText = 'Could not get location. Tap ↻ to retry.';
+        _locationLoading = false;
+      });
     }
   }
 
@@ -81,7 +154,7 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen> {
 
     if (_position == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Waiting for GPS location...')),
+        const SnackBar(content: Text('Location not ready. Tap ↻ and wait.')),
       );
       return;
     }
@@ -89,6 +162,41 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen> {
     setState(() => _isLoading = true);
 
     try {
+      // ── Step 1: ML service check ──────────────────────────────────────
+      var mlRequest = http.MultipartRequest(
+        'POST',
+        Uri.parse('http://3.27.75.51:5000/predict'),
+      );
+      mlRequest.files.add(
+        await http.MultipartFile.fromPath('image', widget.image!.path),
+      );
+      final mlResponse = await mlRequest.send();
+      final mlBody = await mlResponse.stream.bytesToString();
+      final mlData = jsonDecode(mlBody);
+
+      if (mlData['type'] == 'Not a Leak') {
+        setState(() => _isLoading = false);
+        showDialog(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text('Not a Leak'),
+            content: Text(
+              'The image does not appear to be a water leak.\n'
+                  'Confidence: ${mlData['confidence']}%\n\n'
+                  'Please take a clearer photo of the leak.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+
+      // ── Step 2: Submit to Laravel with lat/lng ────────────────────────
       final token = await ApiService.getToken();
 
       var request = http.MultipartRequest(
@@ -139,153 +247,227 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: const Padding(
-          padding: EdgeInsets.all(8.0),
-          child: CircleAvatar(
-            backgroundColor: Colors.grey,
-            child: Icon(Icons.person, color: Colors.white),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFFB3E5FC),
+              Color(0xFFE1F5FE),
+              Color(0xFFFFFFFF),
+            ],
+            stops: [0.0, 0.45, 1.0],
           ),
         ),
-        title: const Text(
-          'GeoFlow',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: Colors.black,
-          ),
-        ),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings_outlined, color: Colors.black),
-            onPressed: () => Navigator.pushNamed(context, '/settings'),
-          ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Center(
-              child: Text(
-                'Manage Leaks',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // Image preview
-            Center(
-              child: Container(
-                width: double.infinity,
-                height: 200,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade200,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.grey.shade400),
-                ),
-                child: widget.image != null
-                    ? ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.file(
-                    widget.image!,
-                    fit: BoxFit.cover,
-                  ),
-                )
-                    : const Center(
-                  child: Icon(
-                    Icons.image_outlined,
-                    size: 60,
-                    color: Colors.grey,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // Full Name
-            const Text(
-              'Full Name',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _fullNameController,
-              decoration: InputDecoration(
-                hintText: 'Enter your full name',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // GPS Location (auto)
-            const Text(
-              'Location (GPS)',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey.shade400),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.location_on, color: Colors.teal, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _locationText,
-                      style: const TextStyle(fontSize: 13),
+        child: SafeArea(
+          child: Column(
+            children: [
+              // ── AppBar ─────────────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+                child: Row(
+                  children: [
+                    const CircleAvatar(
+                      backgroundColor: Color(0xFF0288D1),
+                      child: Icon(Icons.person, color: Colors.white),
                     ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.refresh, size: 18),
-                    onPressed: _getLocation,
-                  ),
-                ],
+                    const Expanded(
+                      child: Center(
+                        child: Text(
+                          'GeoFlow',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF01579B),
+                          ),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.settings_outlined, color: Color(0xFF0288D1)),
+                      onPressed: () => Navigator.pushNamed(context, '/settings'),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 32),
 
-            // Submit button
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _isLoading ? null : _submitReport,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.grey.shade300,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                child: _isLoading
-                    ? const CircularProgressIndicator(color: Colors.black)
-                    : const Text(
-                  'Submit Report',
-                  style: TextStyle(
-                    color: Colors.black,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Center(
+                        child: Text(
+                          'Manage Leaks',
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF01579B),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+
+                      // Image preview
+                      Container(
+                        width: double.infinity,
+                        height: 200,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE1F5FE),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFF81D4FA), width: 1.5),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF29B6F6).withOpacity(0.18),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: widget.image != null
+                            ? ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.file(widget.image!, fit: BoxFit.cover),
+                        )
+                            : const Center(
+                          child: Icon(Icons.image_outlined, size: 60, color: Color(0xFF81D4FA)),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+
+                      // Full Name
+                      const Text(
+                        'Full Name',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF0277BD)),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _fullNameController,
+                        decoration: InputDecoration(
+                          hintText: 'Enter your full name',
+                          hintStyle: const TextStyle(color: Color(0xFF90CAF9)),
+                          filled: true,
+                          fillColor: Colors.white.withOpacity(0.85),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: const BorderSide(color: Color(0xFF81D4FA), width: 1.5),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: const BorderSide(color: Color(0xFF0288D1), width: 2),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // GPS Location
+                      const Text(
+                        'Location (GPS)',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF0277BD)),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.85),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFF81D4FA), width: 1.5),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF29B6F6).withOpacity(0.10),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            _locationLoading
+                                ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF0288D1)),
+                            )
+                                : Icon(
+                              _position != null ? Icons.location_on : Icons.location_off,
+                              color: _position != null ? const Color(0xFF0288D1) : Colors.orange,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _locationText,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: _position != null
+                                      ? const Color(0xFF01579B)
+                                      : Colors.orange.shade800,
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.refresh, size: 18, color: Color(0xFF0288D1)),
+                              onPressed: _locationLoading ? null : _getLocation,
+                              tooltip: 'Refresh location',
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+
+                      // Submit button
+                      SizedBox(
+                        width: double.infinity,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: (_position != null && !_isLoading)
+                                  ? [const Color(0xFF29B6F6), const Color(0xFF0288D1)]
+                                  : [Colors.grey.shade400, Colors.grey.shade500],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(10),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF0288D1).withOpacity(0.35),
+                                blurRadius: 8,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: ElevatedButton(
+                            onPressed: (_isLoading || _position == null) ? null : _submitReport,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.transparent,
+                              shadowColor: Colors.transparent,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                            child: _isLoading
+                                ? const CircularProgressIndicator(color: Colors.white)
+                                : Text(
+                              _position != null ? 'Submit Report' : 'Waiting for GPS...',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                    ],
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

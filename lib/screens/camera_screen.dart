@@ -104,55 +104,141 @@ class _CameraScreenState extends State<CameraScreen> {
             ),
           ),
 
-          // Confirm dialog overlay
+          // ── Confirm dialog overlay ────────────────────────────────────────
           if (_showConfirmDialog)
             Center(
               child: Container(
                 margin: const EdgeInsets.all(32),
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
+                  // Same gradient as the other screens
+                  gradient: const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color(0xFFB3E5FC), // light sky blue
+                      Color(0xFFE1F5FE), // very pale blue
+                      Color(0xFFFFFFFF), // white at bottom
+                    ],
+                    stops: [0.0, 0.45, 1.0],
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: const Color(0xFF81D4FA),
+                    width: 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF0288D1).withOpacity(0.25),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // Icon accent
+                    const CircleAvatar(
+                      radius: 28,
+                      backgroundColor: Color(0xFF0288D1),
+                      child: Icon(
+                        Icons.camera_alt,
+                        color: Colors.white,
+                        size: 28,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Title
                     const Text(
                       'Done Taking a Photo?',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
+                        color: Color(0xFF01579B),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'You can submit or retake the photo.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF0277BD),
                       ),
                     ),
                     const SizedBox(height: 24),
+
+                    // Buttons row
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
-                        ElevatedButton(
-                          onPressed: _submitPhoto,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.black,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 24,
-                              vertical: 12,
+                        // Submit — gradient blue button
+                        DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [
+                                Color(0xFF29B6F6),
+                                Color(0xFF0288D1),
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(10),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF0288D1).withOpacity(0.35),
+                                blurRadius: 8,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: ElevatedButton(
+                            onPressed: _submitPhoto,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.transparent,
+                              shadowColor: Colors.transparent,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 28,
+                                vertical: 12,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            child: const Text(
+                              'Submit',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.5,
+                              ),
                             ),
                           ),
-                          child: const Text(
-                            'Submit',
-                            style: TextStyle(color: Colors.white),
-                          ),
                         ),
+
+                        // Cancel — outlined blue button
                         OutlinedButton(
                           onPressed: _retakePhoto,
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 24,
+                              horizontal: 28,
                               vertical: 12,
+                            ),
+                            side: const BorderSide(
+                              color: Color(0xFF0288D1),
+                              width: 1.5,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
                             ),
                           ),
                           child: const Text(
-                            'Cancel',
-                            style: TextStyle(color: Colors.black),
+                            'Retake',
+                            style: TextStyle(
+                              color: Color(0xFF0288D1),
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                       ],
@@ -162,7 +248,7 @@ class _CameraScreenState extends State<CameraScreen> {
               ),
             ),
 
-          // Bottom camera controls
+          // Bottom camera controls (unchanged)
           Positioned(
             bottom: 0,
             left: 0,
@@ -172,22 +258,30 @@ class _CameraScreenState extends State<CameraScreen> {
               color: Colors.black,
               child: Column(
                 children: [
-                  // Mode selector
                   const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text('VIDEO', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                      Text('VIDEO',
+                          style:
+                          TextStyle(color: Colors.white54, fontSize: 12)),
                       SizedBox(width: 16),
-                      Text('PHOTO', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                      Text('PHOTO',
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold)),
                       SizedBox(width: 16),
-                      Text('SQUARE', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                      Text('SQUARE',
+                          style:
+                          TextStyle(color: Colors.white54, fontSize: 12)),
                       SizedBox(width: 16),
-                      Text('PANO', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                      Text('PANO',
+                          style:
+                          TextStyle(color: Colors.white54, fontSize: 12)),
                     ],
                   ),
                   const SizedBox(height: 20),
 
-                  // Camera buttons row
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
@@ -204,7 +298,8 @@ class _CameraScreenState extends State<CameraScreen> {
                           child: _image != null
                               ? ClipRRect(
                             borderRadius: BorderRadius.circular(8),
-                            child: Image.file(_image!, fit: BoxFit.cover),
+                            child:
+                            Image.file(_image!, fit: BoxFit.cover),
                           )
                               : const Icon(Icons.photo, color: Colors.white),
                         ),
@@ -219,14 +314,16 @@ class _CameraScreenState extends State<CameraScreen> {
                           decoration: BoxDecoration(
                             color: Colors.white,
                             shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white54, width: 3),
+                            border:
+                            Border.all(color: Colors.white54, width: 3),
                           ),
                         ),
                       ),
 
                       // Flip camera button
                       IconButton(
-                        icon: const Icon(Icons.flip_camera_ios, color: Colors.white, size: 30),
+                        icon: const Icon(Icons.flip_camera_ios,
+                            color: Colors.white, size: 30),
                         onPressed: () {},
                       ),
                     ],
