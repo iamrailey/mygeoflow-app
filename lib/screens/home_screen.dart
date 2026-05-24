@@ -1,174 +1,269 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'dart:io';
 import 'camera_screen.dart';
+import '../services/api_service.dart';
+import 'notifications_screen.dart';
+import 'package:http/http.dart' as http;
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  int _unreadCount = 0;
+  String _userName = 'User';
+  String _userEmail = '';
+  String? _avatarUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUserProfile();
+    _fetchUnreadCount();
+  }
+
+  Future<void> _fetchUserProfile() async {
+    try {
+      final token = await ApiService.getToken();
+      final response = await http.get(
+        Uri.parse('${ApiService.baseUrl}/user'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        setState(() {
+          _userName = data['name'] ?? 'User';
+          _userEmail = data['email'] ?? '';
+          _avatarUrl = data['avatar_url'];
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _fetchUnreadCount() async {
+    try {
+      final token = await ApiService.getToken();
+      final response = await http.get(
+        Uri.parse('${ApiService.baseUrl}/notifications'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        setState(() {
+          _unreadCount = data
+              .where((n) => n['is_read'] == false || n['is_read'] == 0)
+              .length;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Widget _buildAvatar({double radius = 20}) {
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: const Color(0xFF0288D1),
+      backgroundImage: (_avatarUrl != null && _avatarUrl!.isNotEmpty)
+          ? NetworkImage(_avatarUrl!)
+          : null,
+      child: (_avatarUrl == null || _avatarUrl!.isEmpty)
+          ? Icon(Icons.person, size: radius * 1.2, color: Colors.white)
+          : null,
+    );
+  }
+
+  // ── Notification bell icon with red badge ──────────────────────────────────
+  Widget _buildNotifIcon() {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        const Icon(Icons.notifications_outlined, color: Color(0xFF0288D1)),
+        if (_unreadCount > 0)
+          Positioned(
+            top: -4,
+            right: -4,
+            child: Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(
+                color: Colors.red,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 1.5),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 
   void _showProfileSheet(BuildContext context) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFFB3E5FC),
-              Color(0xFFE1F5FE),
-              Color(0xFFFFFFFF),
+      isScrollControlled: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(ctx).viewInsets.bottom,
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Color(0xFFB3E5FC),
+                Color(0xFFE1F5FE),
+                Color(0xFFFFFFFF),
+              ],
+              stops: [0.0, 0.45, 1.0],
+            ),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border.all(color: const Color(0xFF81D4FA), width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF0288D1).withOpacity(0.2),
+                blurRadius: 16,
+                offset: const Offset(0, -4),
+              ),
             ],
-            stops: [0.0, 0.45, 1.0],
           ),
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          border: Border.all(color: const Color(0xFF81D4FA), width: 1.5),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF0288D1).withOpacity(0.2),
-              blurRadius: 16,
-              offset: const Offset(0, -4),
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Drag handle
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF81D4FA),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Avatar + name + email
+                  _buildAvatar(radius: 36),
+                  const SizedBox(height: 12),
+                  Text(
+                    _userName,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF01579B),
+                    ),
+                  ),
+                  Text(
+                    _userEmail,
+                    style: const TextStyle(fontSize: 13, color: Color(0xFF0277BD)),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Edit Profile
+                  _sheetTile(
+                    icon: const Icon(Icons.person_outline, color: Color(0xFF0288D1)),
+                    title: 'Edit Profile',
+                    onTap: () async {
+                      Navigator.pop(ctx);
+                      await Navigator.pushNamed(context, '/profile');
+                      _fetchUserProfile();
+                    },
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Notifications
+                  _sheetTile(
+                    icon: _buildNotifIcon(),
+                    title: 'Notifications',
+                    onTap: () async {
+                      Navigator.pop(ctx);
+                      await Navigator.pushNamed(context, '/notifications');
+                      _fetchUnreadCount();
+                    },
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Logout
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.85),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.red.shade200, width: 1),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.red.withOpacity(0.07),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: ListTile(
+                      leading: Icon(Icons.logout, color: Colors.red.shade400),
+                      title: Text(
+                        'Logout',
+                        style: TextStyle(
+                          color: Colors.red.shade400,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _confirmLogout(context);
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              ),
             ),
-          ],
+          ),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Drag handle
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: const Color(0xFF81D4FA),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 20),
+      ),
+    );
+  }
 
-            // Avatar + name
-            const CircleAvatar(
-              radius: 36,
-              backgroundColor: Color(0xFF0288D1),
-              child: Icon(Icons.person, size: 40, color: Colors.white),
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'User Name',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF01579B),
-              ),
-            ),
-            const Text(
-              'user@email.com',
-              style: TextStyle(
-                fontSize: 13,
-                color: Color(0xFF0277BD),
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // Edit Profile
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.85),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF81D4FA), width: 1),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF0288D1).withOpacity(0.07),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: ListTile(
-                leading: const Icon(Icons.person_outline,
-                    color: Color(0xFF0288D1)),
-                title: const Text(
-                  'Edit Profile',
-                  style: TextStyle(
-                    color: Color(0xFF01579B),
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                trailing: const Icon(Icons.chevron_right,
-                    color: Color(0xFF0288D1)),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.pushNamed(context, '/profile');
-                },
-              ),
-            ),
-            const SizedBox(height: 10),
-
-            // Notifications
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.85),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF81D4FA), width: 1),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF0288D1).withOpacity(0.07),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: ListTile(
-                leading: const Icon(Icons.notifications_outlined,
-                    color: Color(0xFF0288D1)),
-                title: const Text(
-                  'Notifications',
-                  style: TextStyle(
-                    color: Color(0xFF01579B),
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                trailing: const Icon(Icons.chevron_right,
-                    color: Color(0xFF0288D1)),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.pushNamed(context, '/notifications');
-                },
-              ),
-            ),
-            const SizedBox(height: 10),
-
-            // Logout
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.85),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.red.shade200, width: 1),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.red.withOpacity(0.07),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: ListTile(
-                leading: Icon(Icons.logout, color: Colors.red.shade400),
-                title: Text(
-                  'Logout',
-                  style: TextStyle(
-                    color: Colors.red.shade400,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _confirmLogout(context);
-                },
-              ),
-            ),
-            const SizedBox(height: 16),
-          ],
+  // ── Reusable sheet tile ────────────────────────────────────────────────────
+  Widget _sheetTile({
+    required Widget icon,
+    required String title,
+    required VoidCallback onTap,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.85),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF81D4FA), width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0288D1).withOpacity(0.07),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: ListTile(
+        leading: icon,
+        title: Text(
+          title,
+          style: const TextStyle(
+            color: Color(0xFF01579B),
+            fontWeight: FontWeight.w500,
+          ),
         ),
+        trailing: const Icon(Icons.chevron_right, color: Color(0xFF0288D1)),
+        onTap: onTap,
       ),
     );
   }
@@ -177,9 +272,7 @@ class HomeScreen extends StatelessWidget {
     showDialog(
       context: context,
       builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Container(
           decoration: BoxDecoration(
             gradient: const LinearGradient(
@@ -202,8 +295,7 @@ class HomeScreen extends StatelessWidget {
               CircleAvatar(
                 radius: 24,
                 backgroundColor: Colors.red.shade400,
-                child: const Icon(Icons.logout,
-                    color: Colors.white, size: 22),
+                child: const Icon(Icons.logout, color: Colors.white, size: 22),
               ),
               const SizedBox(height: 16),
               const Text(
@@ -224,7 +316,6 @@ class HomeScreen extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  // Cancel
                   OutlinedButton(
                     onPressed: () => Navigator.pop(context),
                     style: OutlinedButton.styleFrom(
@@ -244,7 +335,6 @@ class HomeScreen extends StatelessWidget {
                       ),
                     ),
                   ),
-                  // Logout confirm
                   DecoratedBox(
                     decoration: BoxDecoration(
                       color: Colors.red.shade400,
@@ -303,17 +393,33 @@ class HomeScreen extends StatelessWidget {
         leading: Padding(
           padding: const EdgeInsets.all(8.0),
           child: GestureDetector(
-            // ✅ Top-left avatar → logout confirm dialog directly
-            onTap: () => _confirmLogout(context),
-            child: const CircleAvatar(
-              backgroundColor: Color(0xFF0288D1),
-              child: Icon(Icons.person, color: Colors.white),
+            onTap: () => _showProfileSheet(context),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                _buildAvatar(radius: 20),
+                if (_unreadCount > 0)
+                  Positioned(
+                    top: -2,
+                    right: -2,
+                    child: Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 1.5),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         ),
         title: Image.asset('assets/logo.png', height: 40),
         centerTitle: true,
         actions: [
+          // Notification bell removed — badge is shown on bottom nav instead
           IconButton(
             icon: const Icon(Icons.settings_outlined,
                 color: Color(0xFF0288D1)),
@@ -341,46 +447,31 @@ class HomeScreen extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // ✅ Center avatar → opens profile sheet
                   GestureDetector(
                     onTap: () => _showProfileSheet(context),
-                    child: const CircleAvatar(
-                      radius: 50,
-                      backgroundColor: Color(0xFF0288D1),
-                      child: Icon(Icons.person, size: 60, color: Colors.white),
-                    ),
+                    child: _buildAvatar(radius: 50),
                   ),
                   const SizedBox(height: 24),
-
-                  const Text(
-                    'Welcome User!',
-                    style: TextStyle(
+                  Text(
+                    'Welcome $_userName!',
+                    style: const TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
                       color: Color(0xFF01579B),
                     ),
                   ),
                   const SizedBox(height: 8),
-
                   const Text(
                     'Ready to Report a Leak?',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Color(0xFF0277BD),
-                    ),
+                    style: TextStyle(fontSize: 16, color: Color(0xFF0277BD)),
                   ),
                   const SizedBox(height: 32),
-
-                  // Report Leak button
                   SizedBox(
                     width: double.infinity,
                     child: DecoratedBox(
                       decoration: BoxDecoration(
                         gradient: const LinearGradient(
-                          colors: [
-                            Color(0xFF29B6F6),
-                            Color(0xFF0288D1),
-                          ],
+                          colors: [Color(0xFF29B6F6), Color(0xFF0288D1)],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),

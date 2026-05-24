@@ -15,7 +15,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   bool _isLoading = true;
   String? _errorMessage;
 
-  // Map backend notification types to icons and colors
   IconData _getIcon(String? type) {
     switch (type) {
       case 'submitted':
@@ -64,7 +63,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
     try {
       final token = await ApiService.getToken();
-
       final response = await http.get(
         Uri.parse('${ApiService.baseUrl}/notifications'),
         headers: {
@@ -105,7 +103,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Future<void> _markAllAsRead() async {
     try {
       final token = await ApiService.getToken();
-
       final response = await http.post(
         Uri.parse('${ApiService.baseUrl}/notifications/mark-all-read'),
         headers: {
@@ -116,9 +113,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
       if (response.statusCode == 200) {
         setState(() {
-          _notifications = _notifications
-              .map((n) => {...n, 'isRead': true})
-              .toList();
+          _notifications = _notifications.map((n) => {...n, 'isRead': true}).toList();
         });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -136,21 +131,22 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
       );
     }
   }
 
   Future<void> _markOneAsRead(int index) async {
     final notif = _notifications[index];
-    if (notif['isRead'] == true) return; // already read, skip
+    if (notif['isRead'] == true) return;
+
+    // Optimistically mark as read immediately so UI responds instantly
+    setState(() {
+      _notifications[index] = {...notif, 'isRead': true};
+    });
 
     try {
       final token = await ApiService.getToken();
-
       final response = await http.post(
         Uri.parse('${ApiService.baseUrl}/notifications/${notif['id']}/mark-read'),
         headers: {
@@ -159,17 +155,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         },
       );
 
-      if (response.statusCode == 200) {
+      // If API call fails, revert the optimistic update
+      if (response.statusCode != 200) {
         setState(() {
-          _notifications[index] = {...notif, 'isRead': true};
+          _notifications[index] = {...notif, 'isRead': false};
         });
       }
     } catch (_) {
-      // Silently fail for single mark — not critical
+      // Revert on network error
+      setState(() {
+        _notifications[index] = {...notif, 'isRead': false};
+      });
     }
   }
 
-  // Format timestamp from backend (e.g. "2024-01-15T10:30:00Z")
   String _formatTime(String raw) {
     try {
       final dt = DateTime.parse(raw).toLocal();
@@ -187,7 +186,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       if (diff.inDays < 7) return '${diff.inDays} days ago';
       return '${dt.day}/${dt.month}/${dt.year}';
     } catch (_) {
-      return raw; // return as-is if not parseable
+      return raw;
     }
   }
 
@@ -214,8 +213,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             children: [
               // ── Custom AppBar ──────────────────────────────────────────
               Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 12.0, vertical: 8.0),
+                padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
                 child: Row(
                   children: [
                     const CircleAvatar(
@@ -226,10 +224,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     Image.asset('assets/logo.png', height: 40),
                     const Spacer(),
                     IconButton(
-                      icon: const Icon(Icons.settings_outlined,
-                          color: Color(0xFF0288D1)),
-                      onPressed: () =>
-                          Navigator.pushNamed(context, '/settings'),
+                      icon: const Icon(Icons.settings_outlined, color: Color(0xFF0288D1)),
+                      onPressed: () => Navigator.pushNamed(context, '/settings'),
                     ),
                   ],
                 ),
@@ -237,8 +233,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
               // ── Header row ─────────────────────────────────────────────
               Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16.0, vertical: 12.0),
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -252,12 +247,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                             color: Color(0xFF01579B),
                           ),
                         ),
-                        // Unread badge
                         if (unreadCount > 0) ...[
                           const SizedBox(width: 8),
                           Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 2),
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                             decoration: BoxDecoration(
                               color: const Color(0xFF0288D1),
                               borderRadius: BorderRadius.circular(12),
@@ -276,16 +269,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     ),
                     Row(
                       children: [
-                        // Refresh button
                         IconButton(
-                          icon: const Icon(Icons.refresh,
-                              color: Color(0xFF0288D1), size: 20),
+                          icon: const Icon(Icons.refresh, color: Color(0xFF0288D1), size: 20),
                           onPressed: _fetchNotifications,
                           tooltip: 'Refresh',
                         ),
                         TextButton(
-                          onPressed:
-                          unreadCount > 0 ? _markAllAsRead : null,
+                          onPressed: unreadCount > 0 ? _markAllAsRead : null,
                           child: Text(
                             'Mark all as read',
                             style: TextStyle(
@@ -305,23 +295,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               // ── Body ───────────────────────────────────────────────────
               Expanded(
                 child: _isLoading
-                    ? const Center(
-                  child: CircularProgressIndicator(
-                    color: Color(0xFF0288D1),
-                  ),
-                )
+                    ? const Center(child: CircularProgressIndicator(color: Color(0xFF0288D1)))
                     : _errorMessage != null
                     ? Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.wifi_off,
-                          color: Color(0xFF81D4FA), size: 48),
+                      const Icon(Icons.wifi_off, color: Color(0xFF81D4FA), size: 48),
                       const SizedBox(height: 12),
                       Text(
                         _errorMessage!,
-                        style: const TextStyle(
-                            color: Color(0xFF0277BD)),
+                        style: const TextStyle(color: Color(0xFF0277BD)),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 16),
@@ -347,10 +331,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       SizedBox(height: 12),
                       Text(
                         'No notifications yet',
-                        style: TextStyle(
-                          color: Color(0xFF0277BD),
-                          fontSize: 14,
-                        ),
+                        style: TextStyle(color: Color(0xFF0277BD), fontSize: 14),
                       ),
                     ],
                   ),
@@ -359,113 +340,96 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   color: const Color(0xFF0288D1),
                   onRefresh: _fetchNotifications,
                   child: ListView.separated(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
                     itemCount: _notifications.length,
                     separatorBuilder: (context, index) =>
-                    const Divider(
-                      height: 1,
-                      color: Color(0xFF81D4FA),
-                    ),
+                    const Divider(height: 1, color: Color(0xFF81D4FA)),
                     itemBuilder: (context, index) {
                       final notif = _notifications[index];
-                      final bool isRead =
-                      notif['isRead'] as bool;
-                      final String type =
-                          notif['type'] ?? '';
+                      final bool isRead = notif['isRead'] as bool;
+                      final String type = notif['type'] ?? '';
 
-                      return GestureDetector(
-                        onTap: () => _markOneAsRead(index),
-                        child: Container(
-                          decoration: BoxDecoration(
+                      return Container(
+                        decoration: BoxDecoration(
+                          color: isRead
+                              ? Colors.white.withOpacity(0.55)
+                              : const Color(0xFFE1F5FE),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
                             color: isRead
-                                ? Colors.white.withOpacity(0.55)
-                                : const Color(0xFFE1F5FE),
-                            borderRadius:
-                            BorderRadius.circular(12),
-                            border: Border.all(
-                              color: isRead
-                                  ? const Color(0xFFB3E5FC)
-                                  : const Color(0xFF81D4FA),
-                              width: 1,
+                                ? const Color(0xFFB3E5FC)
+                                : const Color(0xFF81D4FA),
+                            width: 1,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF0288D1).withOpacity(0.07),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
                             ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(0xFF0288D1)
-                                    .withOpacity(0.07),
-                                blurRadius: 6,
-                                offset: const Offset(0, 2),
+                          ],
+                        ),
+                        margin: const EdgeInsets.symmetric(vertical: 4),
+                        // ✅ onTap is on ListTile directly — GestureDetector removed
+                        child: ListTile(
+                          onTap: () => _markOneAsRead(index),
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 10,
+                            horizontal: 12,
+                          ),
+                          leading: CircleAvatar(
+                            backgroundColor: _getColor(type).withOpacity(0.15),
+                            child: Icon(
+                              _getIcon(type),
+                              color: _getColor(type),
+                              size: 22,
+                            ),
+                          ),
+                          title: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  notif['title'],
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: isRead
+                                        ? FontWeight.normal
+                                        : FontWeight.bold,
+                                    color: const Color(0xFF01579B),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                _formatTime(notif['time']),
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Color(0xFF0288D1),
+                                ),
                               ),
                             ],
                           ),
-                          margin: const EdgeInsets.symmetric(
-                              vertical: 4),
-                          child: ListTile(
-                            contentPadding:
-                            const EdgeInsets.symmetric(
-                              vertical: 10,
-                              horizontal: 12,
-                            ),
-                            leading: CircleAvatar(
-                              backgroundColor: _getColor(type)
-                                  .withOpacity(0.15),
-                              child: Icon(
-                                _getIcon(type),
-                                color: _getColor(type),
-                                size: 22,
+                          subtitle: Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              notif['message'],
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF0277BD),
                               ),
                             ),
-                            title: Row(
-                              mainAxisAlignment:
-                              MainAxisAlignment.spaceBetween,
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    notif['title'],
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: isRead
-                                          ? FontWeight.normal
-                                          : FontWeight.bold,
-                                      color: const Color(
-                                          0xFF01579B),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  _formatTime(notif['time']),
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    color: Color(0xFF0288D1),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            subtitle: Padding(
-                              padding:
-                              const EdgeInsets.only(top: 4),
-                              child: Text(
-                                notif['message'],
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF0277BD),
-                                ),
-                              ),
-                            ),
-                            // Unread dot indicator
-                            trailing: !isRead
-                                ? Container(
-                              width: 10,
-                              height: 10,
-                              decoration:
-                              const BoxDecoration(
-                                color: Color(0xFF0288D1),
-                                shape: BoxShape.circle,
-                              ),
-                            )
-                                : null,
                           ),
+                          trailing: !isRead
+                              ? Container(
+                            width: 10,
+                            height: 10,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF0288D1),
+                              shape: BoxShape.circle,
+                            ),
+                          )
+                              : null,
                         ),
                       );
                     },
@@ -480,10 +444,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   _notifications.isEmpty
                       ? 'No new notifications yet'
                       : '$unreadCount unread notification${unreadCount == 1 ? '' : 's'}',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF81D4FA),
-                  ),
+                  style: const TextStyle(fontSize: 12, color: Color(0xFF81D4FA)),
                 ),
               ),
             ],

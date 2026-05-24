@@ -6,6 +6,7 @@ import 'widgets/bottom_nav_bar.dart';
 import 'screens/settings_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/help_support_screen.dart';
+import 'screens/notifications_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -32,6 +33,7 @@ class MyApp extends StatelessWidget {
         '/settings': (context) => const SettingsScreen(),
         '/profile': (context) => const ProfileScreen(),
         '/help': (context) => const HelpSupportScreen(),
+        '/notifications': (context) => const NotificationsScreen(), // ✅ added
       },
     );
   }
