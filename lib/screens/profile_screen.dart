@@ -17,6 +17,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   File? _profileImage;
+  String? _avatarUrl;
   bool _isLoading = false;
   bool _isFetching = true;
   String? _fetchError;
@@ -27,16 +28,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _fetchProfile();
   }
 
-  // ── Fetch user from Laravel API ────────────────────────────────────────────
   Future<void> _fetchProfile() async {
     setState(() {
       _isFetching = true;
       _fetchError = null;
     });
-
     try {
       final token = await ApiService.getToken();
-
       final response = await http.get(
         Uri.parse('${ApiService.baseUrl}/user'),
         headers: {
@@ -44,13 +42,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
           'Accept': 'application/json',
         },
       );
-
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         setState(() {
           _fullNameController.text = data['name'] ?? '';
           _emailController.text = data['email'] ?? '';
           _phoneController.text = data['phone'] ?? '';
+          _avatarUrl = data['avatar_url'];
           _isFetching = false;
         });
       } else {
@@ -67,7 +65,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // ── Pick photo from gallery ────────────────────────────────────────────────
   Future<void> _changePhoto() async {
     final ImagePicker picker = ImagePicker();
     final XFile? photo = await picker.pickImage(
@@ -79,7 +76,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // ── Save changes to Laravel API ────────────────────────────────────────────
   Future<void> _saveChanges() async {
     if (_fullNameController.text.isEmpty || _emailController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -90,69 +86,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
       return;
     }
-
     setState(() => _isLoading = true);
-
     try {
       final token = await ApiService.getToken();
-
-      // If there's a new profile image, use multipart; otherwise JSON
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('${ApiService.baseUrl}/user/update'),
+      );
+      request.headers['Authorization'] = 'Bearer $token';
+      request.headers['Accept'] = 'application/json';
+      request.fields['name'] = _fullNameController.text.trim();
+      request.fields['email'] = _emailController.text.trim();
+      request.fields['phone'] = _phoneController.text.trim();
+      request.fields['_method'] = 'PUT';
       if (_profileImage != null) {
-        final request = http.MultipartRequest(
-          'POST',
-          Uri.parse('${ApiService.baseUrl}/user/update'),
-        );
-        request.headers['Authorization'] = 'Bearer $token';
-        request.headers['Accept'] = 'application/json';
-        request.fields['name'] = _fullNameController.text.trim();
-        request.fields['email'] = _emailController.text.trim();
-        request.fields['phone'] = _phoneController.text.trim();
-        request.fields['_method'] = 'PUT'; // Laravel method spoofing
         request.files.add(
           await http.MultipartFile.fromPath('avatar', _profileImage!.path),
         );
-
-        final streamed = await request.send();
-        final response = await http.Response.fromStream(streamed);
-
-        setState(() => _isLoading = false);
-
-        if (response.statusCode == 200) {
-          _showSuccess();
-        } else {
-          _showError(response.body);
-        }
+      }
+      final streamed = await request.send();
+      final response = await http.Response.fromStream(streamed);
+      setState(() => _isLoading = false);
+      if (response.statusCode == 200) {
+        _showSuccess();
       } else {
-        final response = await http.put(
-          Uri.parse('${ApiService.baseUrl}/user/update'),
-          headers: {
-            'Authorization': 'Bearer $token',
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-          },
-          body: jsonEncode({
-            'name': _fullNameController.text.trim(),
-            'email': _emailController.text.trim(),
-            'phone': _phoneController.text.trim(),
-          }),
-        );
-
-        setState(() => _isLoading = false);
-
-        if (response.statusCode == 200) {
-          _showSuccess();
-        } else {
-          _showError(response.body);
-        }
+        _showError(response.body);
       }
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Network error: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('Network error: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -175,7 +139,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       final decoded = jsonDecode(body);
       if (decoded['message'] != null) message = decoded['message'];
-      // Laravel validation errors
       if (decoded['errors'] != null) {
         final errors = decoded['errors'] as Map<String, dynamic>;
         message = errors.values.first[0];
@@ -194,7 +157,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.dispose();
   }
 
-  // ── Input decoration helper ────────────────────────────────────────────────
   InputDecoration _inputDecoration(String hint) {
     return InputDecoration(
       filled: true,
@@ -220,26 +182,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFFB3E5FC),
-              Color(0xFFE1F5FE),
-              Color(0xFFFFFFFF),
-            ],
+            colors: [Color(0xFFB3E5FC), Color(0xFFE1F5FE), Color(0xFFFFFFFF)],
             stops: [0.0, 0.45, 1.0],
           ),
         ),
         child: SafeArea(
           child: Column(
             children: [
-              // ── Custom AppBar ──────────────────────────────────────────────
               Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 4.0, vertical: 8.0),
+                padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 8.0),
                 child: Row(
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.arrow_back,
-                          color: Color(0xFF01579B)),
+                      icon: const Icon(Icons.arrow_back, color: Color(0xFF01579B)),
                       onPressed: () => Navigator.pop(context),
                     ),
                     const Text(
@@ -253,29 +208,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ],
                 ),
               ),
-
-              // ── Body ──────────────────────────────────────────────────────
               Expanded(
                 child: _isFetching
-                    ? const Center(
-                  child: CircularProgressIndicator(
-                    color: Color(0xFF0288D1),
-                  ),
-                )
+                    ? const Center(child: CircularProgressIndicator(color: Color(0xFF0288D1)))
                     : _fetchError != null
                     ? Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.wifi_off,
-                          color: Color(0xFF81D4FA), size: 48),
+                      const Icon(Icons.wifi_off, color: Color(0xFF81D4FA), size: 48),
                       const SizedBox(height: 12),
-                      Text(
-                        _fetchError!,
-                        style: const TextStyle(
-                            color: Color(0xFF0277BD)),
-                        textAlign: TextAlign.center,
-                      ),
+                      Text(_fetchError!, style: const TextStyle(color: Color(0xFF0277BD)), textAlign: TextAlign.center),
                       const SizedBox(height: 16),
                       ElevatedButton.icon(
                         onPressed: _fetchProfile,
@@ -305,8 +248,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     shape: BoxShape.circle,
                                     boxShadow: [
                                       BoxShadow(
-                                        color: const Color(0xFF0288D1)
-                                            .withOpacity(0.3),
+                                        color: const Color(0xFF0288D1).withOpacity(0.3),
                                         blurRadius: 12,
                                         offset: const Offset(0, 4),
                                       ),
@@ -314,18 +256,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   ),
                                   child: CircleAvatar(
                                     radius: 50,
-                                    backgroundColor:
-                                    const Color(0xFFB3E5FC),
-                                    backgroundImage:
-                                    _profileImage != null
-                                        ? FileImage(_profileImage!)
+                                    backgroundColor: const Color(0xFFB3E5FC),
+                                    backgroundImage: _profileImage != null
+                                        ? FileImage(_profileImage!) as ImageProvider
+                                        : (_avatarUrl != null && _avatarUrl!.isNotEmpty)
+                                        ? NetworkImage(_avatarUrl!)
                                         : null,
-                                    child: _profileImage == null
-                                        ? const Icon(
-                                      Icons.person,
-                                      size: 55,
-                                      color: Color(0xFF0288D1),
-                                    )
+                                    child: (_profileImage == null && (_avatarUrl == null || _avatarUrl!.isEmpty))
+                                        ? const Icon(Icons.person, size: 55, color: Color(0xFF0288D1))
                                         : null,
                                   ),
                                 ),
@@ -335,17 +273,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   child: GestureDetector(
                                     onTap: _changePhoto,
                                     child: Container(
-                                      padding:
-                                      const EdgeInsets.all(6),
+                                      padding: const EdgeInsets.all(6),
                                       decoration: const BoxDecoration(
                                         color: Color(0xFF0288D1),
                                         shape: BoxShape.circle,
                                       ),
-                                      child: const Icon(
-                                        Icons.camera_alt,
-                                        color: Colors.white,
-                                        size: 16,
-                                      ),
+                                      child: const Icon(Icons.camera_alt, color: Colors.white, size: 16),
                                     ),
                                   ),
                                 ),
@@ -368,105 +301,52 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       const SizedBox(height: 32),
 
-                      // ── Full Name ────────────────────────────
-                      const Text(
-                        'Full Name',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF0277BD),
-                        ),
-                      ),
+                      const Text('Full Name', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF0277BD))),
                       const SizedBox(height: 8),
-                      TextField(
-                        controller: _fullNameController,
-                        decoration: _inputDecoration('Full Name'),
-                      ),
+                      TextField(controller: _fullNameController, decoration: _inputDecoration('Full Name')),
                       const SizedBox(height: 20),
 
-                      // ── Email ────────────────────────────────
-                      const Text(
-                        'Email Address',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF0277BD),
-                        ),
-                      ),
+                      const Text('Email Address', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF0277BD))),
                       const SizedBox(height: 8),
-                      TextField(
-                        controller: _emailController,
-                        keyboardType: TextInputType.emailAddress,
-                        decoration:
-                        _inputDecoration('user@email.com'),
-                      ),
+                      TextField(controller: _emailController, keyboardType: TextInputType.emailAddress, decoration: _inputDecoration('user@email.com')),
                       const SizedBox(height: 20),
 
-                      // ── Phone ────────────────────────────────
-                      const Text(
-                        'Phone Number',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF0277BD),
-                        ),
-                      ),
+                      const Text('Phone Number', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF0277BD))),
                       const SizedBox(height: 8),
-                      TextField(
-                        controller: _phoneController,
-                        keyboardType: TextInputType.phone,
-                        decoration:
-                        _inputDecoration('Enter phone number'),
-                      ),
+                      TextField(controller: _phoneController, keyboardType: TextInputType.phone, decoration: _inputDecoration('Enter phone number')),
                       const SizedBox(height: 32),
 
-                      // ── Save Changes button ──────────────────
                       SizedBox(
                         width: double.infinity,
                         child: DecoratedBox(
                           decoration: BoxDecoration(
                             gradient: const LinearGradient(
-                              colors: [
-                                Color(0xFF29B6F6),
-                                Color(0xFF0288D1),
-                              ],
+                              colors: [Color(0xFF29B6F6), Color(0xFF0288D1)],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             ),
                             borderRadius: BorderRadius.circular(10),
                             boxShadow: [
                               BoxShadow(
-                                color: const Color(0xFF0288D1)
-                                    .withOpacity(0.35),
+                                color: const Color(0xFF0288D1).withOpacity(0.35),
                                 blurRadius: 8,
                                 offset: const Offset(0, 4),
                               ),
                             ],
                           ),
                           child: ElevatedButton(
-                            onPressed:
-                            _isLoading ? null : _saveChanges,
+                            onPressed: _isLoading ? null : _saveChanges,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.transparent,
                               shadowColor: Colors.transparent,
-                              padding: const EdgeInsets.symmetric(
-                                  vertical: 16),
-                              shape: RoundedRectangleBorder(
-                                borderRadius:
-                                BorderRadius.circular(10),
-                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                             ),
                             child: _isLoading
-                                ? const CircularProgressIndicator(
-                                color: Colors.white)
+                                ? const CircularProgressIndicator(color: Colors.white)
                                 : const Text(
                               'Save Changes',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 0.5,
-                              ),
+                              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600, letterSpacing: 0.5),
                             ),
                           ),
                         ),

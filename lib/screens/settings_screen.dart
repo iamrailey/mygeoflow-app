@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import '../services/api_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -11,6 +14,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _notificationsEnabled = true;
   bool _locationEnabled = true;
   bool _darkTheme = false;
+  String _userName = 'User Name';
+  String _userEmail = 'user@email.com';
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUserProfile();
+  }
+
+  Future<void> _fetchUserProfile() async {
+    try {
+      final token = await ApiService.getToken();
+      final response = await http.get(
+        Uri.parse('${ApiService.baseUrl}/user'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        setState(() {
+          _userName = data['name'] ?? 'User Name';
+          _userEmail = data['email'] ?? 'user@email.com';
+        });
+      }
+    } catch (_) {}
+  }
 
   void _logout(BuildContext context) {
     showDialog(
@@ -62,7 +93,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  // Cancel
                   OutlinedButton(
                     onPressed: () => Navigator.pop(context),
                     style: OutlinedButton.styleFrom(
@@ -82,7 +112,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ),
                   ),
-                  // Logout
                   DecoratedBox(
                     decoration: BoxDecoration(
                       color: Colors.red.shade400,
@@ -210,17 +239,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             size: 28,
                           ),
                         ),
-                        title: const Text(
-                          'User Name',
-                          style: TextStyle(
+                        title: Text(
+                          _userName,
+                          style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 15,
                             color: Color(0xFF01579B),
                           ),
                         ),
-                        subtitle: const Text(
-                          'user@email.com',
-                          style: TextStyle(
+                        subtitle: Text(
+                          _userEmail,
+                          style: const TextStyle(
                             color: Color(0xFF0277BD),
                             fontSize: 13,
                           ),
@@ -229,8 +258,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           Icons.chevron_right,
                           color: Color(0xFF0288D1),
                         ),
-                        onTap: () =>
-                            Navigator.pushNamed(context, '/profile'),
+                        onTap: () async {
+                          await Navigator.pushNamed(context, '/profile');
+                          _fetchUserProfile();
+                        },
                       ),
                     ),
 
@@ -255,7 +286,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       child: Column(
                         children: [
-                          // Notifications toggle
                           ListTile(
                             leading: const Icon(
                               Icons.notifications_outlined,
@@ -284,8 +314,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               height: 1,
                               indent: 56,
                               color: Color(0xFFB3E5FC)),
-
-                          // Location Services toggle
                           ListTile(
                             leading: const Icon(
                               Icons.location_on_outlined,
@@ -314,8 +342,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               height: 1,
                               indent: 56,
                               color: Color(0xFFB3E5FC)),
-
-                          // App Theme toggle
                           ListTile(
                             leading: const Icon(
                               Icons.contrast,
@@ -379,14 +405,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           Icons.chevron_right,
                           color: Color(0xFF0288D1),
                         ),
-                        onTap: () =>
-                            Navigator.pushNamed(context, '/help'),
+                        onTap: () => Navigator.pushNamed(context, '/help'),
                       ),
                     ),
 
                     const SizedBox(height: 8),
 
-                    // App version
                     Padding(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 24, vertical: 8),
@@ -421,8 +445,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       decoration: BoxDecoration(
                         color: Colors.white.withOpacity(0.85),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                            color: Colors.red.shade200, width: 1),
+                        border: Border.all(color: Colors.red.shade200, width: 1),
                         boxShadow: [
                           BoxShadow(
                             color: Colors.red.withOpacity(0.07),

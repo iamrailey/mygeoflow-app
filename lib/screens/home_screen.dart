@@ -43,6 +43,36 @@ class _HomeScreenState extends State<HomeScreen> {
           _userEmail = data['email'] ?? '';
           _avatarUrl = data['avatar_url'];
         });
+
+        // ── Show reminder if phone is not set ──
+        // ── Show reminder if phone is not set ──
+        if ((data['phone'] == null || data['phone'].toString().isEmpty) && mounted) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Row(
+                  children: [
+                    Icon(Icons.phone_outlined, color: Colors.white, size: 18),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Please add your phone number for faster report follow-up.',
+                        style: TextStyle(fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+                backgroundColor: const Color(0xFF0288D1),
+                duration: const Duration(seconds: 6),
+                action: SnackBarAction(
+                  label: 'Add Now',
+                  textColor: Colors.white,
+                  onPressed: () => Navigator.pushNamed(context, '/profile'),
+                ),
+              ),
+            );
+          });
+        }
       }
     } catch (_) {}
   }
@@ -81,7 +111,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ── Notification bell icon with red badge ──────────────────────────────────
   Widget _buildNotifIcon() {
     return Stack(
       clipBehavior: Clip.none,
@@ -143,7 +172,6 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Drag handle
                   Container(
                     width: 40,
                     height: 4,
@@ -153,8 +181,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   const SizedBox(height: 20),
-
-                  // Avatar + name + email
                   _buildAvatar(radius: 36),
                   const SizedBox(height: 12),
                   Text(
@@ -170,8 +196,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     style: const TextStyle(fontSize: 13, color: Color(0xFF0277BD)),
                   ),
                   const SizedBox(height: 20),
-
-                  // Edit Profile
                   _sheetTile(
                     icon: const Icon(Icons.person_outline, color: Color(0xFF0288D1)),
                     title: 'Edit Profile',
@@ -182,8 +206,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     },
                   ),
                   const SizedBox(height: 10),
-
-                  // Notifications
                   _sheetTile(
                     icon: _buildNotifIcon(),
                     title: 'Notifications',
@@ -194,8 +216,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     },
                   ),
                   const SizedBox(height: 10),
-
-                  // Logout
                   Container(
                     decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.85),
@@ -234,7 +254,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ── Reusable sheet tile ────────────────────────────────────────────────────
   Widget _sheetTile({
     required Widget icon,
     required String title,
@@ -419,7 +438,6 @@ class _HomeScreenState extends State<HomeScreen> {
         title: Image.asset('assets/logo.png', height: 40),
         centerTitle: true,
         actions: [
-          // Notification bell removed — badge is shown on bottom nav instead
           IconButton(
             icon: const Icon(Icons.settings_outlined,
                 color: Color(0xFF0288D1)),
