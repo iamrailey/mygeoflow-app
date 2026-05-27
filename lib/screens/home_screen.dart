@@ -317,20 +317,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: const Icon(Icons.logout, color: Colors.white, size: 22),
               ),
               const SizedBox(height: 16),
-              const Text(
-                'Logout',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF01579B),
-                ),
-              ),
+              const Text('Logout', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF01579B))),
               const SizedBox(height: 8),
-              const Text(
-                'Are you sure you want to logout?',
-                style: TextStyle(fontSize: 13, color: Color(0xFF0277BD)),
-                textAlign: TextAlign.center,
-              ),
+              const Text('Are you sure you want to logout?', style: TextStyle(fontSize: 13, color: Color(0xFF0277BD)), textAlign: TextAlign.center),
               const SizedBox(height: 24),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -338,36 +327,21 @@ class _HomeScreenState extends State<HomeScreen> {
                   OutlinedButton(
                     onPressed: () => Navigator.pop(context),
                     style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 28, vertical: 12),
-                      side: const BorderSide(
-                          color: Color(0xFF0288D1), width: 1.5),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
+                      side: const BorderSide(color: Color(0xFF0288D1), width: 1.5),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
-                    child: const Text(
-                      'Cancel',
-                      style: TextStyle(
-                        color: Color(0xFF0288D1),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                    child: const Text('Cancel', style: TextStyle(color: Color(0xFF0288D1), fontWeight: FontWeight.w600)),
                   ),
                   DecoratedBox(
                     decoration: BoxDecoration(
                       color: Colors.red.shade400,
                       borderRadius: BorderRadius.circular(10),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.red.withOpacity(0.3),
-                          blurRadius: 8,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
+                      boxShadow: [BoxShadow(color: Colors.red.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))],
                     ),
                     child: ElevatedButton(
                       onPressed: () {
+                        ScaffoldMessenger.of(context).hideCurrentSnackBar(); // 👈 ADD THIS
                         Navigator.pop(context);
                         Navigator.pushNamedAndRemoveUntil(
                           context,
@@ -378,19 +352,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.transparent,
                         shadowColor: Colors.transparent,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 28, vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       ),
-                      child: const Text(
-                        'Logout',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
+                      child: const Text('Logout', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
                     ),
                   ),
                 ],
