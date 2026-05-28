@@ -51,7 +51,7 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Connection error! Is the server running?')),
+        SnackBar(content: Text('Error: $e')),
       );
     }
   }
