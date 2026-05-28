@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
 import 'manage_leaks_screen.dart';
 
@@ -18,18 +19,24 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
   File? _capturedImage;
   bool _showConfirmDialog = false;
   int _selectedCameraIndex = 0;
+  bool _darkTheme = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _initCamera();
+    _loadTheme();
+  }
+
+  Future<void> _loadTheme() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() => _darkTheme = prefs.getBool('darkTheme') ?? false);
   }
 
   Future<void> _initCamera() async {
     _cameras = await availableCameras();
     if (_cameras == null || _cameras!.isEmpty) return;
-
     await _startCamera(_selectedCameraIndex);
   }
 
@@ -43,7 +50,6 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
     try {
       await controller.initialize();
       if (!mounted) return;
-
       setState(() {
         _controller = controller;
         _isInitialized = true;
@@ -55,7 +61,6 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
 
   Future<void> _takePhoto() async {
     if (_controller == null || !_controller!.value.isInitialized) return;
-
     try {
       final XFile photo = await _controller!.takePicture();
       setState(() {
@@ -69,9 +74,7 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
 
   Future<void> _flipCamera() async {
     if (_cameras == null || _cameras!.length < 2) return;
-
     _selectedCameraIndex = _selectedCameraIndex == 0 ? 1 : 0;
-
     await _controller?.dispose();
     setState(() => _isInitialized = false);
     await _startCamera(_selectedCameraIndex);
@@ -118,6 +121,23 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
       _startCamera(_selectedCameraIndex);
     }
   }
+
+  // ── Dark-mode aware colors ───────────────────────────────────────────────
+  List<Color> get _dialogGradientColors => _darkTheme
+      ? [const Color(0xFF1A1A2E), const Color(0xFF16213E), const Color(0xFF0F3460)]
+      : [const Color(0xFFB3E5FC), const Color(0xFFE1F5FE), const Color(0xFFFFFFFF)];
+
+  Color get _dialogBorderColor =>
+      _darkTheme ? const Color(0xFF2A4A6B) : const Color(0xFF81D4FA);
+
+  Color get _dialogTitleColor =>
+      _darkTheme ? const Color(0xFF90CAF9) : const Color(0xFF01579B);
+
+  Color get _dialogSubtitleColor =>
+      _darkTheme ? const Color(0xFF64B5F6) : const Color(0xFF0277BD);
+
+  Color get _dialogBgColor =>
+      _darkTheme ? const Color(0xFF1E2A3A) : Colors.white.withOpacity(0.85);
 
   @override
   Widget build(BuildContext context) {
@@ -168,18 +188,14 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
                 margin: const EdgeInsets.all(32),
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
+                  gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [
-                      Color(0xFFB3E5FC),
-                      Color(0xFFE1F5FE),
-                      Color(0xFFFFFFFF),
-                    ],
-                    stops: [0.0, 0.45, 1.0],
+                    colors: _dialogGradientColors,
+                    stops: const [0.0, 0.45, 1.0],
                   ),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFF81D4FA), width: 1.5),
+                  border: Border.all(color: _dialogBorderColor, width: 1.5),
                   boxShadow: [
                     BoxShadow(
                       color: const Color(0xFF0288D1).withOpacity(0.25),
@@ -197,18 +213,18 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
                       child: Icon(Icons.camera_alt, color: Colors.white, size: 28),
                     ),
                     const SizedBox(height: 16),
-                    const Text(
+                    Text(
                       'Done Taking a Photo?',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF01579B),
+                        color: _dialogTitleColor,
                       ),
                     ),
                     const SizedBox(height: 8),
-                    const Text(
+                    Text(
                       'You can submit or retake the photo.',
-                      style: TextStyle(fontSize: 13, color: Color(0xFF0277BD)),
+                      style: TextStyle(fontSize: 13, color: _dialogSubtitleColor),
                     ),
                     const SizedBox(height: 24),
                     Row(
@@ -257,15 +273,20 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 28, vertical: 12),
-                            side: const BorderSide(
-                                color: Color(0xFF0288D1), width: 1.5),
+                            side: BorderSide(
+                                color: _darkTheme
+                                    ? const Color(0xFF64B5F6)
+                                    : const Color(0xFF0288D1),
+                                width: 1.5),
                             shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(10)),
                           ),
-                          child: const Text(
+                          child: Text(
                             'Retake',
                             style: TextStyle(
-                              color: Color(0xFF0288D1),
+                              color: _darkTheme
+                                  ? const Color(0xFF64B5F6)
+                                  : const Color(0xFF0288D1),
                               fontWeight: FontWeight.w600,
                             ),
                           ),

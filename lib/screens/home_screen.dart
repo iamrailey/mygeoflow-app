@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'dart:io';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'camera_screen.dart';
 import '../services/api_service.dart';
 import 'notifications_screen.dart';
@@ -18,18 +19,37 @@ class _HomeScreenState extends State<HomeScreen> {
   String _userName = 'User';
   String _userEmail = '';
   String? _avatarUrl;
-  bool _snackbarShown = false; // ✅ prevent showing more than once per session
+  bool _snackbarShown = false;
+  bool _darkTheme = false;
 
   @override
   void initState() {
     super.initState();
+    _loadTheme();
     _fetchUserProfile();
     _fetchUnreadCount();
   }
 
+  Future<void> _loadTheme() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() => _darkTheme = prefs.getBool('darkTheme') ?? false);
+  }
+
+  // ── Dark-mode aware colors ───────────────────────────────────────────────
+  Color get _bgStart      => _darkTheme ? const Color(0xFF1A1A2E) : const Color(0xFFB3E5FC);
+  Color get _bgMid        => _darkTheme ? const Color(0xFF16213E) : const Color(0xFFE1F5FE);
+  Color get _bgEnd        => _darkTheme ? const Color(0xFF0F3460) : const Color(0xFFFFFFFF);
+  Color get _titleColor   => _darkTheme ? const Color(0xFF90CAF9) : const Color(0xFF01579B);
+  Color get _subtitleColor=> _darkTheme ? const Color(0xFF64B5F6) : const Color(0xFF0277BD);
+  Color get _cardBg       => _darkTheme ? const Color(0xFF1E2A3A) : Colors.white.withOpacity(0.85);
+  Color get _cardBorder   => _darkTheme ? const Color(0xFF2A4A6B) : const Color(0xFF81D4FA);
+  Color get _iconColor    => _darkTheme ? const Color(0xFF64B5F6) : const Color(0xFF0288D1);
+  Color get _sheetHandle  => _darkTheme ? const Color(0xFF2A4A6B) : const Color(0xFF81D4FA);
+
+  List<Color> get _gradientColors => [_bgStart, _bgMid, _bgEnd];
+
   @override
   void dispose() {
-    // ✅ hide any lingering snackbar when this screen is disposed (e.g. on logout)
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -56,12 +76,11 @@ class _HomeScreenState extends State<HomeScreen> {
           _avatarUrl = data['avatar_url'];
         });
 
-        // ✅ Only show once per session, only if mounted, only if no phone
         final hasNoPhone = data['phone'] == null || data['phone'].toString().isEmpty;
         if (hasNoPhone && mounted && !_snackbarShown) {
           _snackbarShown = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted) return; // ✅ guard: don't show if already navigated away
+            if (!mounted) return;
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: const Row(
@@ -129,7 +148,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        const Icon(Icons.notifications_outlined, color: Color(0xFF0288D1)),
+        Icon(Icons.notifications_outlined, color: _iconColor),
         if (_unreadCount > 0)
           Positioned(
             top: -4,
@@ -159,18 +178,14 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         child: Container(
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
+            gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [
-                Color(0xFFB3E5FC),
-                Color(0xFFE1F5FE),
-                Color(0xFFFFFFFF),
-              ],
-              stops: [0.0, 0.45, 1.0],
+              colors: _gradientColors,
+              stops: const [0.0, 0.45, 1.0],
             ),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            border: Border.all(color: const Color(0xFF81D4FA), width: 1.5),
+            border: Border.all(color: _cardBorder, width: 1.5),
             boxShadow: [
               BoxShadow(
                 color: const Color(0xFF0288D1).withOpacity(0.2),
@@ -186,11 +201,12 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // drag handle
                   Container(
                     width: 40,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF81D4FA),
+                      color: _sheetHandle,
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -199,19 +215,19 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 12),
                   Text(
                     _userName,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFF01579B),
+                      color: _titleColor,
                     ),
                   ),
                   Text(
                     _userEmail,
-                    style: const TextStyle(fontSize: 13, color: Color(0xFF0277BD)),
+                    style: TextStyle(fontSize: 13, color: _subtitleColor),
                   ),
                   const SizedBox(height: 20),
                   _sheetTile(
-                    icon: const Icon(Icons.person_outline, color: Color(0xFF0288D1)),
+                    icon: Icon(Icons.person_outline, color: _iconColor),
                     title: 'Edit Profile',
                     onTap: () async {
                       Navigator.pop(ctx);
@@ -230,9 +246,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     },
                   ),
                   const SizedBox(height: 10),
+                  // Logout tile
                   Container(
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.85),
+                      color: _cardBg,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: Colors.red.shade200, width: 1),
                       boxShadow: [
@@ -275,9 +292,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.85),
+        color: _cardBg,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF81D4FA), width: 1),
+        border: Border.all(color: _cardBorder, width: 1),
         boxShadow: [
           BoxShadow(
             color: const Color(0xFF0288D1).withOpacity(0.07),
@@ -290,12 +307,12 @@ class _HomeScreenState extends State<HomeScreen> {
         leading: icon,
         title: Text(
           title,
-          style: const TextStyle(
-            color: Color(0xFF01579B),
+          style: TextStyle(
+            color: _titleColor,
             fontWeight: FontWeight.w500,
           ),
         ),
-        trailing: const Icon(Icons.chevron_right, color: Color(0xFF0288D1)),
+        trailing: Icon(Icons.chevron_right, color: _iconColor),
         onTap: onTap,
       ),
     );
@@ -308,18 +325,14 @@ class _HomeScreenState extends State<HomeScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Container(
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
+            gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [
-                Color(0xFFB3E5FC),
-                Color(0xFFE1F5FE),
-                Color(0xFFFFFFFF),
-              ],
-              stops: [0.0, 0.45, 1.0],
+              colors: _gradientColors,
+              stops: const [0.0, 0.45, 1.0],
             ),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFF81D4FA), width: 1.5),
+            border: Border.all(color: _cardBorder, width: 1.5),
           ),
           padding: const EdgeInsets.all(24),
           child: Column(
@@ -331,15 +344,20 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: const Icon(Icons.logout, color: Colors.white, size: 22),
               ),
               const SizedBox(height: 16),
-              const Text('Logout',
-                  style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF01579B))),
+              Text(
+                'Logout',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: _titleColor,
+                ),
+              ),
               const SizedBox(height: 8),
-              const Text('Are you sure you want to logout?',
-                  style: TextStyle(fontSize: 13, color: Color(0xFF0277BD)),
-                  textAlign: TextAlign.center),
+              Text(
+                'Are you sure you want to logout?',
+                style: TextStyle(fontSize: 13, color: _subtitleColor),
+                textAlign: TextAlign.center,
+              ),
               const SizedBox(height: 24),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -349,15 +367,15 @@ class _HomeScreenState extends State<HomeScreen> {
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 28, vertical: 12),
-                      side: const BorderSide(
-                          color: Color(0xFF0288D1), width: 1.5),
+                      side: BorderSide(color: _iconColor, width: 1.5),
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10)),
                     ),
-                    child: const Text('Cancel',
-                        style: TextStyle(
-                            color: Color(0xFF0288D1),
-                            fontWeight: FontWeight.w600)),
+                    child: Text(
+                      'Cancel',
+                      style: TextStyle(
+                          color: _iconColor, fontWeight: FontWeight.w600),
+                    ),
                   ),
                   DecoratedBox(
                     decoration: BoxDecoration(
@@ -365,14 +383,14 @@ class _HomeScreenState extends State<HomeScreen> {
                       borderRadius: BorderRadius.circular(10),
                       boxShadow: [
                         BoxShadow(
-                            color: Colors.red.withOpacity(0.3),
-                            blurRadius: 8,
-                            offset: const Offset(0, 4))
+                          color: Colors.red.withOpacity(0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 4),
+                        ),
                       ],
                     ),
                     child: ElevatedButton(
                       onPressed: () {
-                        // ✅ clear ALL snackbars before navigating away
                         ScaffoldMessenger.of(context).hideCurrentSnackBar();
                         ScaffoldMessenger.of(context).clearSnackBars();
                         Navigator.pop(context);
@@ -390,10 +408,11 @@ class _HomeScreenState extends State<HomeScreen> {
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10)),
                       ),
-                      child: const Text('Logout',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600)),
+                      child: const Text(
+                        'Logout',
+                        style: TextStyle(
+                            color: Colors.white, fontWeight: FontWeight.w600),
+                      ),
                     ),
                   ),
                 ],
@@ -442,22 +461,22 @@ class _HomeScreenState extends State<HomeScreen> {
         centerTitle: true,
         actions: [
           IconButton(
-            icon: const Icon(Icons.settings_outlined, color: Color(0xFF0288D1)),
-            onPressed: () => Navigator.pushNamed(context, '/settings'),
+            icon: Icon(Icons.settings_outlined, color: _iconColor),
+            onPressed: () async {
+              await Navigator.pushNamed(context, '/settings');
+              _loadTheme(); // reload theme when returning from settings
+            },
           ),
         ],
       ),
-      body: Container(
-        decoration: const BoxDecoration(
+      body: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFFB3E5FC),
-              Color(0xFFE1F5FE),
-              Color(0xFFFFFFFF),
-            ],
-            stops: [0.0, 0.45, 1.0],
+            colors: _gradientColors,
+            stops: const [0.0, 0.45, 1.0],
           ),
         ),
         child: SafeArea(
@@ -474,16 +493,16 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 24),
                   Text(
                     'Welcome $_userName!',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFF01579B),
+                      color: _titleColor,
                     ),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
+                  Text(
                     'Ready to Report a Leak?',
-                    style: TextStyle(fontSize: 16, color: Color(0xFF0277BD)),
+                    style: TextStyle(fontSize: 16, color: _subtitleColor),
                   ),
                   const SizedBox(height: 32),
                   SizedBox(

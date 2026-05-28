@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -16,11 +17,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _darkTheme = false;
   String _userName = 'User Name';
   String _userEmail = 'user@email.com';
+  String? _avatarUrl; // ← ADDED
 
   @override
   void initState() {
     super.initState();
     _fetchUserProfile();
+    _loadPreferences();
+  }
+
+  Future<void> _loadPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _notificationsEnabled = prefs.getBool('notifications') ?? true;
+      _locationEnabled = prefs.getBool('location') ?? true;
+      _darkTheme = prefs.getBool('darkTheme') ?? false;
+    });
+  }
+
+  Future<void> _savePreference(String key, bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(key, value);
   }
 
   Future<void> _fetchUserProfile() async {
@@ -38,6 +55,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         setState(() {
           _userName = data['name'] ?? 'User Name';
           _userEmail = data['email'] ?? 'user@email.com';
+          _avatarUrl = data['avatar_url']; // ← ADDED
         });
       }
     } catch (_) {}
@@ -47,9 +65,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     showDialog(
       context: context,
       builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Container(
           decoration: BoxDecoration(
             gradient: const LinearGradient(
@@ -101,8 +117,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       side: const BorderSide(
                           color: Color(0xFF0288D1), width: 1.5),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
+                          borderRadius: BorderRadius.circular(10)),
                     ),
                     child: const Text(
                       'Cancel',
@@ -139,15 +154,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 28, vertical: 12),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
+                            borderRadius: BorderRadius.circular(10)),
                       ),
                       child: const Text(
                         'Logout',
                         style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                        ),
+                            color: Colors.white, fontWeight: FontWeight.w600),
                       ),
                     ),
                   ),
@@ -160,20 +172,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  // ── Dark-mode aware colors ───────────────────────────────────────────────
+  Color get _bgStart => _darkTheme ? const Color(0xFF1A1A2E) : const Color(0xFFB3E5FC);
+  Color get _bgMid => _darkTheme ? const Color(0xFF16213E) : const Color(0xFFE1F5FE);
+  Color get _bgEnd => _darkTheme ? const Color(0xFF0F3460) : const Color(0xFFFFFFFF);
+  Color get _cardBg => _darkTheme ? const Color(0xFF1E2A3A) : Colors.white.withOpacity(0.85);
+  Color get _cardBorder => _darkTheme ? const Color(0xFF2A4A6B) : const Color(0xFF81D4FA);
+  Color get _titleColor => _darkTheme ? const Color(0xFF90CAF9) : const Color(0xFF01579B);
+  Color get _subtitleColor => _darkTheme ? const Color(0xFF64B5F6) : const Color(0xFF0277BD);
+  Color get _sectionColor => _darkTheme ? const Color(0xFF64B5F6) : const Color(0xFF0288D1);
+  Color get _iconColor => _darkTheme ? const Color(0xFF64B5F6) : const Color(0xFF0288D1);
+  Color get _dividerColor => _darkTheme ? const Color(0xFF2A4A6B) : const Color(0xFFB3E5FC);
+  Color get _switchActive => _darkTheme ? const Color(0xFF64B5F6) : const Color(0xFF0288D1);
+
+  // ── ADDED: builds the profile avatar (network image or fallback icon) ────
+  Widget _buildAvatar() {
+    return CircleAvatar(
+      radius: 24,
+      backgroundColor: _darkTheme
+          ? const Color(0xFF2A4A6B)
+          : const Color(0xFFB3E5FC),
+      backgroundImage: (_avatarUrl != null && _avatarUrl!.isNotEmpty)
+          ? NetworkImage(_avatarUrl!)
+          : null,
+      child: (_avatarUrl == null || _avatarUrl!.isEmpty)
+          ? Icon(Icons.person, color: _iconColor, size: 28)
+          : null,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
+      body: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFFB3E5FC),
-              Color(0xFFE1F5FE),
-              Color(0xFFFFFFFF),
-            ],
-            stops: [0.0, 0.45, 1.0],
+            colors: [_bgStart, _bgMid, _bgEnd],
+            stops: const [0.0, 0.45, 1.0],
           ),
         ),
         child: SafeArea(
@@ -181,19 +219,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
             children: [
               // ── Custom AppBar ──────────────────────────────────────
               Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 4.0, vertical: 8.0),
+                padding:
+                const EdgeInsets.symmetric(horizontal: 4.0, vertical: 8.0),
                 child: Row(
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.arrow_back,
-                          color: Color(0xFF01579B)),
+                      icon: Icon(Icons.arrow_back, color: _titleColor),
                       onPressed: () => Navigator.pop(context),
                     ),
-                    const Text(
+                    Text(
                       'Settings',
                       style: TextStyle(
-                        color: Color(0xFF01579B),
+                        color: _titleColor,
                         fontWeight: FontWeight.bold,
                         fontSize: 18,
                       ),
@@ -207,19 +244,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 child: ListView(
                   padding: const EdgeInsets.only(bottom: 32),
                   children: [
-
                     // ── PROFILE SECTION ──────────────────────────────
                     _sectionLabel('PROFILE'),
                     Container(
                       margin: const EdgeInsets.symmetric(horizontal: 16),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.85),
+                        color: _cardBg,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                            color: const Color(0xFF81D4FA), width: 1),
+                        border: Border.all(color: _cardBorder, width: 1),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF0288D1).withOpacity(0.07),
+                            color: _iconColor.withOpacity(0.07),
                             blurRadius: 6,
                             offset: const Offset(0, 2),
                           ),
@@ -227,40 +262,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       child: ListTile(
                         contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                        leading: const CircleAvatar(
-                          radius: 24,
-                          backgroundColor: Color(0xFFB3E5FC),
-                          child: Icon(
-                            Icons.person,
-                            color: Color(0xFF0288D1),
-                            size: 28,
-                          ),
-                        ),
+                            horizontal: 16, vertical: 8),
+                        leading: _buildAvatar(), // ← CHANGED: was hardcoded Icons.person
                         title: Text(
                           _userName,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 15,
-                            color: Color(0xFF01579B),
+                            color: _titleColor,
                           ),
                         ),
                         subtitle: Text(
                           _userEmail,
-                          style: const TextStyle(
-                            color: Color(0xFF0277BD),
-                            fontSize: 13,
-                          ),
+                          style:
+                          TextStyle(color: _subtitleColor, fontSize: 13),
                         ),
-                        trailing: const Icon(
-                          Icons.chevron_right,
-                          color: Color(0xFF0288D1),
-                        ),
+                        trailing: Icon(Icons.chevron_right, color: _iconColor),
                         onTap: () async {
                           await Navigator.pushNamed(context, '/profile');
-                          _fetchUserProfile();
+                          _fetchUserProfile(); // ← refreshes avatar after editing
                         },
                       ),
                     ),
@@ -272,13 +292,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     Container(
                       margin: const EdgeInsets.symmetric(horizontal: 16),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.85),
+                        color: _cardBg,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                            color: const Color(0xFF81D4FA), width: 1),
+                        border: Border.all(color: _cardBorder, width: 1),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF0288D1).withOpacity(0.07),
+                            color: _iconColor.withOpacity(0.07),
                             blurRadius: 6,
                             offset: const Offset(0, 2),
                           ),
@@ -287,83 +306,62 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       child: Column(
                         children: [
                           ListTile(
-                            leading: const Icon(
-                              Icons.notifications_outlined,
-                              color: Color(0xFF0288D1),
-                            ),
-                            title: const Text(
-                              'Notifications',
-                              style: TextStyle(
-                                fontSize: 15,
-                                color: Color(0xFF01579B),
-                              ),
-                            ),
-                            subtitle: const Text(
-                              'Receive push notifications',
-                              style: TextStyle(
-                                  fontSize: 12, color: Color(0xFF0277BD)),
-                            ),
+                            leading: Icon(Icons.notifications_outlined,
+                                color: _iconColor),
+                            title: Text('Notifications',
+                                style: TextStyle(
+                                    fontSize: 15, color: _titleColor)),
+                            subtitle: Text('Receive push notifications',
+                                style: TextStyle(
+                                    fontSize: 12, color: _subtitleColor)),
                             trailing: Switch(
                               value: _notificationsEnabled,
-                              onChanged: (val) =>
-                                  setState(() => _notificationsEnabled = val),
-                              activeColor: const Color(0xFF0288D1),
+                              onChanged: (val) {
+                                setState(() => _notificationsEnabled = val);
+                                _savePreference('notifications', val);
+                              },
+                              activeColor: _switchActive,
                             ),
                           ),
-                          const Divider(
-                              height: 1,
-                              indent: 56,
-                              color: Color(0xFFB3E5FC)),
+                          Divider(
+                              height: 1, indent: 56, color: _dividerColor),
                           ListTile(
-                            leading: const Icon(
-                              Icons.location_on_outlined,
-                              color: Color(0xFF0288D1),
-                            ),
-                            title: const Text(
-                              'Location Services',
-                              style: TextStyle(
-                                fontSize: 15,
-                                color: Color(0xFF01579B),
-                              ),
-                            ),
-                            subtitle: const Text(
-                              'Enable GPS for accurate reports',
-                              style: TextStyle(
-                                  fontSize: 12, color: Color(0xFF0277BD)),
-                            ),
+                            leading: Icon(Icons.location_on_outlined,
+                                color: _iconColor),
+                            title: Text('Location Services',
+                                style: TextStyle(
+                                    fontSize: 15, color: _titleColor)),
+                            subtitle: Text('Enable GPS for accurate reports',
+                                style: TextStyle(
+                                    fontSize: 12, color: _subtitleColor)),
                             trailing: Switch(
                               value: _locationEnabled,
-                              onChanged: (val) =>
-                                  setState(() => _locationEnabled = val),
-                              activeColor: const Color(0xFF0288D1),
+                              onChanged: (val) {
+                                setState(() => _locationEnabled = val);
+                                _savePreference('location', val);
+                              },
+                              activeColor: _switchActive,
                             ),
                           ),
-                          const Divider(
-                              height: 1,
-                              indent: 56,
-                              color: Color(0xFFB3E5FC)),
+                          Divider(
+                              height: 1, indent: 56, color: _dividerColor),
                           ListTile(
-                            leading: const Icon(
-                              Icons.contrast,
-                              color: Color(0xFF0288D1),
-                            ),
-                            title: const Text(
-                              'App Theme',
-                              style: TextStyle(
-                                fontSize: 15,
-                                color: Color(0xFF01579B),
-                              ),
-                            ),
+                            leading: Icon(Icons.contrast, color: _iconColor),
+                            title: Text('App Theme',
+                                style: TextStyle(
+                                    fontSize: 15, color: _titleColor)),
                             subtitle: Text(
                               _darkTheme ? 'Dark mode' : 'Light mode',
-                              style: const TextStyle(
-                                  fontSize: 12, color: Color(0xFF0277BD)),
+                              style: TextStyle(
+                                  fontSize: 12, color: _subtitleColor),
                             ),
                             trailing: Switch(
                               value: _darkTheme,
-                              onChanged: (val) =>
-                                  setState(() => _darkTheme = val),
-                              activeColor: const Color(0xFF0288D1),
+                              onChanged: (val) {
+                                setState(() => _darkTheme = val);
+                                _savePreference('darkTheme', val);
+                              },
+                              activeColor: _switchActive,
                             ),
                           ),
                         ],
@@ -377,34 +375,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     Container(
                       margin: const EdgeInsets.symmetric(horizontal: 16),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.85),
+                        color: _cardBg,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                            color: const Color(0xFF81D4FA), width: 1),
+                        border: Border.all(color: _cardBorder, width: 1),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF0288D1).withOpacity(0.07),
+                            color: _iconColor.withOpacity(0.07),
                             blurRadius: 6,
                             offset: const Offset(0, 2),
                           ),
                         ],
                       ),
                       child: ListTile(
-                        leading: const Icon(
-                          Icons.help_outline,
-                          color: Color(0xFF0288D1),
-                        ),
-                        title: const Text(
-                          'Help & Support',
-                          style: TextStyle(
-                            fontSize: 15,
-                            color: Color(0xFF01579B),
-                          ),
-                        ),
-                        trailing: const Icon(
-                          Icons.chevron_right,
-                          color: Color(0xFF0288D1),
-                        ),
+                        leading: Icon(Icons.help_outline, color: _iconColor),
+                        title: Text('Help & Support',
+                            style:
+                            TextStyle(fontSize: 15, color: _titleColor)),
+                        trailing: Icon(Icons.chevron_right, color: _iconColor),
                         onTap: () => Navigator.pushNamed(context, '/help'),
                       ),
                     ),
@@ -415,19 +402,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 24, vertical: 8),
                       child: RichText(
-                        text: const TextSpan(
+                        text: TextSpan(
                           children: [
                             TextSpan(
                               text: 'v1.0.0  ',
                               style: TextStyle(
-                                color: Color(0xFF81D4FA),
-                                fontSize: 13,
-                              ),
+                                  color: _sectionColor, fontSize: 13),
                             ),
                             TextSpan(
                               text: 'App Version',
                               style: TextStyle(
-                                color: Color(0xFF0277BD),
+                                color: _subtitleColor,
                                 fontWeight: FontWeight.w500,
                                 fontSize: 13,
                               ),
@@ -443,9 +428,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     Container(
                       margin: const EdgeInsets.symmetric(horizontal: 16),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.85),
+                        color: _cardBg,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.red.shade200, width: 1),
+                        border:
+                        Border.all(color: Colors.red.shade200, width: 1),
                         boxShadow: [
                           BoxShadow(
                             color: Colors.red.withOpacity(0.07),
@@ -489,10 +475,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       padding: const EdgeInsets.fromLTRB(24, 12, 16, 6),
       child: Text(
         label,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w600,
-          color: Color(0xFF0288D1),
+          color: _sectionColor,
           letterSpacing: 0.8,
         ),
       ),
