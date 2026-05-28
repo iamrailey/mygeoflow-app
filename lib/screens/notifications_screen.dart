@@ -18,6 +18,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   // ── Theme ────────────────────────────────────────────────────────
   bool _darkTheme = false;
+  String? _avatarUrl;
 
   // ── Dark-mode aware colors ───────────────────────────────────────
   Color get _bgStart       => _darkTheme ? const Color(0xFF1A1A2E) : const Color(0xFFB3E5FC);
@@ -46,6 +47,24 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Future<void> _loadTheme() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() => _darkTheme = prefs.getBool('darkTheme') ?? false);
+
+    // Fetch avatar from API
+    try {
+      final token = await ApiService.getToken();
+      final response = await http.get(
+        Uri.parse('${ApiService.baseUrl}/user'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (mounted) {
+          setState(() => _avatarUrl = data['avatar_url']);
+        }
+      }
+    } catch (_) {}
   }
 
   IconData _getIcon(String? type) {
@@ -241,10 +260,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     horizontal: 12.0, vertical: 8.0),
                 child: Row(
                   children: [
+                    // ── Profile picture ──────────────────────────────────
                     CircleAvatar(
                       backgroundColor: _iconColor,
-                      child:
-                      const Icon(Icons.person, color: Colors.white),
+                      backgroundImage:
+                      (_avatarUrl != null && _avatarUrl!.isNotEmpty)
+                          ? NetworkImage(_avatarUrl!)
+                          : null,
+                      child: (_avatarUrl == null || _avatarUrl!.isEmpty)
+                          ? const Icon(Icons.person, color: Colors.white)
+                          : null,
                     ),
                     const Spacer(),
                     Image.asset('assets/logo.png', height: 40),
@@ -329,7 +354,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               Expanded(
                 child: _isLoading
                     ? Center(
-                    child: CircularProgressIndicator(color: _iconColor))
+                    child:
+                    CircularProgressIndicator(color: _iconColor))
                     : _errorMessage != null
                     ? Center(
                   child: Column(
@@ -340,7 +366,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       const SizedBox(height: 12),
                       Text(
                         _errorMessage!,
-                        style: TextStyle(color: _subtitleColor),
+                        style:
+                        TextStyle(color: _subtitleColor),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 16),
@@ -424,7 +451,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               vertical: 10,
                               horizontal: 12),
                           leading: CircleAvatar(
-                            backgroundColor: _getColor(type)
+                            backgroundColor:
+                            _getColor(type)
                                 .withOpacity(0.15),
                             child: Icon(
                               _getIcon(type),

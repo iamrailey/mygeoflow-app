@@ -212,7 +212,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 // ── Forgot password ──────────────────────────────────────
                 TextButton(
                   onPressed: () => Navigator.pushNamed(context, '/forgot-password'),
-                  child: const Text(
+                  child: Text(
                     'Forgot password?',
                     style: TextStyle(color: _subtitleColor),
                   ),
