@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 
 class ManageLeaksScreen extends StatefulWidget {
@@ -30,9 +31,17 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen>
   List<dynamic> _myReports = [];
   bool _reportsLoading = false;
 
+  // ── Theme ────────────────────────────────────────────────────────
+  bool _darkTheme = false;
+
+  // ── ADDED: User avatar ───────────────────────────────────────────
+  String? _avatarUrl;
+
   @override
   void initState() {
     super.initState();
+    _loadTheme();
+    _fetchUserProfile(); // ← ADDED
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
       if (_tabController.index == 1) _fetchMyReports();
@@ -45,6 +54,61 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen>
     _tabController.dispose();
     _fullNameController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadTheme() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() => _darkTheme = prefs.getBool('darkTheme') ?? false);
+  }
+
+  // ── ADDED: Fetch user profile to get avatar_url ──────────────────
+  Future<void> _fetchUserProfile() async {
+    try {
+      final token = await ApiService.getToken();
+      final response = await http.get(
+        Uri.parse('${ApiService.baseUrl}/user'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        setState(() {
+          _avatarUrl = data['avatar_url'];
+        });
+      }
+    } catch (_) {}
+  }
+
+  // ── Dark-mode aware colors ───────────────────────────────────────
+  Color get _bgStart        => _darkTheme ? const Color(0xFF1A1A2E) : const Color(0xFFB3E5FC);
+  Color get _bgMid          => _darkTheme ? const Color(0xFF16213E) : const Color(0xFFE1F5FE);
+  Color get _bgEnd          => _darkTheme ? const Color(0xFF0F3460) : const Color(0xFFFFFFFF);
+  Color get _titleColor     => _darkTheme ? const Color(0xFF90CAF9) : const Color(0xFF01579B);
+  Color get _subtitleColor  => _darkTheme ? const Color(0xFF64B5F6) : const Color(0xFF0277BD);
+  Color get _cardBg         => _darkTheme ? const Color(0xFF1E2A3A) : Colors.white;
+  Color get _cardBgOpaque   => _darkTheme ? const Color(0xFF1E2A3A) : Colors.white.withOpacity(0.85);
+  Color get _cardBorder     => _darkTheme ? const Color(0xFF2A4A6B) : const Color(0xFF81D4FA);
+  Color get _iconColor      => _darkTheme ? const Color(0xFF64B5F6) : const Color(0xFF0288D1);
+  Color get _tabBarBg       => _darkTheme ? const Color(0xFF1E2A3A).withOpacity(0.6) : Colors.white.withOpacity(0.6);
+  Color get _hintColor      => _darkTheme ? const Color(0xFF4A6A8A) : const Color(0xFF90CAF9);
+  Color get _inputTextColor => _darkTheme ? const Color(0xFFE0E0E0) : Colors.black87;
+  Color get _imagePlaceholderBg => _darkTheme ? const Color(0xFF162032) : const Color(0xFFE1F5FE);
+
+  List<Color> get _gradientColors => [_bgStart, _bgMid, _bgEnd];
+
+  // ── ADDED: builds the profile avatar (network image or fallback) ─
+  Widget _buildAvatar() {
+    return CircleAvatar(
+      backgroundColor: _iconColor,
+      backgroundImage: (_avatarUrl != null && _avatarUrl!.isNotEmpty)
+          ? NetworkImage(_avatarUrl!)
+          : null,
+      child: (_avatarUrl == null || _avatarUrl!.isEmpty)
+          ? const Icon(Icons.person, color: Colors.white)
+          : null,
+    );
   }
 
   // ── Fetch My Reports ─────────────────────────────────────────────
@@ -76,18 +140,72 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen>
   Future<void> _deleteMyReport(int id) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Delete Report'),
-        content: const Text('Are you sure you want to delete this report?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
-          TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child:
-              const Text('Delete', style: TextStyle(color: Colors.red))),
-        ],
+      builder: (_) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: _gradientColors,
+              stops: const [0.0, 0.45, 1.0],
+            ),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: _cardBorder, width: 1.5),
+          ),
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircleAvatar(
+                radius: 24,
+                backgroundColor: Colors.red.shade400,
+                child: const Icon(Icons.delete, color: Colors.white, size: 22),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Delete Report',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: _titleColor,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Are you sure you want to delete this report?',
+                style: TextStyle(fontSize: 13, color: _subtitleColor),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  OutlinedButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
+                      side: BorderSide(color: _iconColor, width: 1.5),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: Text('Cancel',
+                        style: TextStyle(color: _iconColor, fontWeight: FontWeight.w600)),
+                  ),
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red.shade400,
+                      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: const Text('Delete',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
 
@@ -151,8 +269,7 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen>
       }
       if (permission == LocationPermission.deniedForever) {
         setState(() {
-          _locationText =
-          'Permission permanently denied. Enable in app settings.';
+          _locationText = 'Permission permanently denied. Enable in app settings.';
           _locationLoading = false;
         });
         return;
@@ -244,27 +361,58 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen>
   void _showNotLeakDialog(String confidence) {
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        shape:
-        RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
-          children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
-            SizedBox(width: 8),
-            Text('Not a Leak'),
-          ],
-        ),
-        content: Text(
-          'The image does not appear to be a water leak.\n'
-              'Confidence: $confidence%\n\n'
-              'Please take a clearer photo of the leak.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
+      builder: (_) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: _gradientColors,
+              stops: const [0.0, 0.45, 1.0],
+            ),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: _cardBorder, width: 1.5),
           ),
-        ],
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircleAvatar(
+                radius: 24,
+                backgroundColor: Colors.orange,
+                child: Icon(Icons.warning_amber_rounded, color: Colors.white, size: 22),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Not a Leak',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: _titleColor,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'The image does not appear to be a water leak.\n'
+                    'Confidence: $confidence%\n\n'
+                    'Please take a clearer photo of the leak.',
+                style: TextStyle(fontSize: 13, color: _subtitleColor),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _iconColor,
+                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                child: const Text('OK', style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -372,69 +520,71 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
+      body: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFFB3E5FC),
-              Color(0xFFE1F5FE),
-              Color(0xFFFFFFFF),
-            ],
-            stops: [0.0, 0.45, 1.0],
+            colors: _gradientColors,
+            stops: const [0.0, 0.45, 1.0],
           ),
         ),
         child: SafeArea(
           child: Column(
             children: [
-              // AppBar
+              // ── AppBar ───────────────────────────────────────────
               Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 12.0, vertical: 8.0),
+                padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
                 child: Row(
                   children: [
-                    const CircleAvatar(
-                      backgroundColor: Color(0xFF0288D1),
-                      child: Icon(Icons.person, color: Colors.white),
+                    // ← CHANGED: was hardcoded Icons.person, now shows real avatar
+                    GestureDetector(
+                      onTap: () async {
+                        await Navigator.pushNamed(context, '/profile');
+                        _fetchUserProfile(); // refresh avatar after editing
+                      },
+                      child: _buildAvatar(),
                     ),
-                    const Expanded(
+                    Expanded(
                       child: Center(
                         child: Text(
                           'GeoFlow',
                           style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
-                            color: Color(0xFF01579B),
+                            color: _titleColor,
                           ),
                         ),
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.settings_outlined,
-                          color: Color(0xFF0288D1)),
-                      onPressed: () =>
-                          Navigator.pushNamed(context, '/settings'),
+                      icon: Icon(Icons.settings_outlined, color: _iconColor),
+                      onPressed: () async {
+                        await Navigator.pushNamed(context, '/settings');
+                        _loadTheme();
+                        _fetchUserProfile(); // refresh avatar after settings
+                      },
                     ),
                   ],
                 ),
               ),
 
-              // Tab Bar
+              // ── Tab Bar ──────────────────────────────────────────
               Container(
                 margin: const EdgeInsets.symmetric(horizontal: 24),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.6),
+                  color: _tabBarBg,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: TabBar(
                   controller: _tabController,
                   indicator: BoxDecoration(
-                    color: const Color(0xFF0288D1),
+                    color: _iconColor,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   labelColor: Colors.white,
-                  unselectedLabelColor: const Color(0xFF0288D1),
+                  unselectedLabelColor: _iconColor,
                   tabs: const [
                     Tab(text: 'Submit Report'),
                     Tab(text: 'My Reports'),
@@ -444,7 +594,7 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen>
 
               const SizedBox(height: 8),
 
-              // Tab Views
+              // ── Tab Views ────────────────────────────────────────
               Expanded(
                 child: TabBarView(
                   controller: _tabController,
@@ -460,14 +610,12 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen>
                             width: double.infinity,
                             height: 200,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFE1F5FE),
+                              color: _imagePlaceholderBg,
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                  color: const Color(0xFF81D4FA), width: 1.5),
+                              border: Border.all(color: _cardBorder, width: 1.5),
                               boxShadow: [
                                 BoxShadow(
-                                  color: const Color(0xFF29B6F6)
-                                      .withOpacity(0.18),
+                                  color: const Color(0xFF29B6F6).withOpacity(0.18),
                                   blurRadius: 10,
                                   offset: const Offset(0, 4),
                                 ),
@@ -476,78 +624,78 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen>
                             child: widget.image != null
                                 ? ClipRRect(
                               borderRadius: BorderRadius.circular(12),
-                              child: Image.file(widget.image!,
-                                  fit: BoxFit.cover),
+                              child: Image.file(widget.image!, fit: BoxFit.cover),
                             )
-                                : const Center(
+                                : Center(
                               child: Icon(Icons.image_outlined,
-                                  size: 60, color: Color(0xFF81D4FA)),
+                                  size: 60, color: _cardBorder),
                             ),
                           ),
                           const SizedBox(height: 24),
 
-                          // Full Name
-                          const Text('Full Name',
-                              style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF0277BD))),
+                          // Full Name label
+                          Text(
+                            'Full Name',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: _subtitleColor,
+                            ),
+                          ),
                           const SizedBox(height: 8),
                           TextField(
                             controller: _fullNameController,
+                            style: TextStyle(color: _inputTextColor),
                             decoration: InputDecoration(
                               hintText: 'Enter your full name',
-                              hintStyle:
-                              const TextStyle(color: Color(0xFF90CAF9)),
+                              hintStyle: TextStyle(color: _hintColor),
                               filled: true,
-                              fillColor: Colors.white.withOpacity(0.85),
+                              fillColor: _cardBgOpaque,
                               enabledBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(10),
-                                borderSide: const BorderSide(
-                                    color: Color(0xFF81D4FA), width: 1.5),
+                                borderSide: BorderSide(color: _cardBorder, width: 1.5),
                               ),
                               focusedBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(10),
-                                borderSide: const BorderSide(
-                                    color: Color(0xFF0288D1), width: 2),
+                                borderSide: BorderSide(color: _iconColor, width: 2),
                               ),
                             ),
                           ),
                           const SizedBox(height: 16),
 
-                          // GPS Location
-                          const Text('Location (GPS)',
-                              style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF0277BD))),
+                          // GPS Location label
+                          Text(
+                            'Location (GPS)',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: _subtitleColor,
+                            ),
+                          ),
                           const SizedBox(height: 8),
                           Container(
                             width: double.infinity,
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 10),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.85),
+                              color: _cardBgOpaque,
                               borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                  color: const Color(0xFF81D4FA), width: 1.5),
+                              border: Border.all(color: _cardBorder, width: 1.5),
                             ),
                             child: Row(
                               children: [
                                 _locationLoading
-                                    ? const SizedBox(
+                                    ? SizedBox(
                                   width: 18,
                                   height: 18,
                                   child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Color(0xFF0288D1)),
+                                      strokeWidth: 2, color: _iconColor),
                                 )
                                     : Icon(
                                   _position != null
                                       ? Icons.location_on
                                       : Icons.location_off,
                                   color: _position != null
-                                      ? const Color(0xFF0288D1)
+                                      ? _iconColor
                                       : Colors.orange,
                                   size: 18,
                                 ),
@@ -558,16 +706,14 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen>
                                     style: TextStyle(
                                       fontSize: 13,
                                       color: _position != null
-                                          ? const Color(0xFF01579B)
-                                          : Colors.orange.shade800,
+                                          ? _titleColor
+                                          : Colors.orange.shade700,
                                     ),
                                   ),
                                 ),
                                 IconButton(
-                                  icon: const Icon(Icons.refresh,
-                                      size: 18, color: Color(0xFF0288D1)),
-                                  onPressed:
-                                  _locationLoading ? null : _getLocation,
+                                  icon: Icon(Icons.refresh, size: 18, color: _iconColor),
+                                  onPressed: _locationLoading ? null : _getLocation,
                                 ),
                               ],
                             ),
@@ -581,14 +727,10 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen>
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
                                   colors: (_position != null && !_isLoading)
-                                      ? [
-                                    const Color(0xFF29B6F6),
-                                    const Color(0xFF0288D1)
-                                  ]
-                                      : [
-                                    Colors.grey.shade400,
-                                    Colors.grey.shade500
-                                  ],
+                                      ? _darkTheme
+                                      ? [const Color(0xFF1565C0), const Color(0xFF0D47A1)]
+                                      : [const Color(0xFF29B6F6), const Color(0xFF0288D1)]
+                                      : [Colors.grey.shade600, Colors.grey.shade700],
                                   begin: Alignment.topLeft,
                                   end: Alignment.bottomRight,
                                 ),
@@ -601,15 +743,12 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen>
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.transparent,
                                   shadowColor: Colors.transparent,
-                                  padding: const EdgeInsets.symmetric(
-                                      vertical: 16),
+                                  padding: const EdgeInsets.symmetric(vertical: 16),
                                   shape: RoundedRectangleBorder(
-                                      borderRadius:
-                                      BorderRadius.circular(10)),
+                                      borderRadius: BorderRadius.circular(10)),
                                 ),
                                 child: _isLoading
-                                    ? const CircularProgressIndicator(
-                                    color: Colors.white)
+                                    ? const CircularProgressIndicator(color: Colors.white)
                                     : Text(
                                   _position != null
                                       ? 'Submit Report'
@@ -629,28 +768,24 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen>
 
                     // ── TAB 2: My Reports ─────────────────────────
                     _reportsLoading
-                        ? const Center(
-                        child: CircularProgressIndicator(
-                            color: Color(0xFF0288D1)))
+                        ? Center(
+                        child: CircularProgressIndicator(color: _iconColor))
                         : _myReports.isEmpty
                         ? Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.inbox,
-                              size: 60, color: Color(0xFF81D4FA)),
+                          Icon(Icons.inbox, size: 60, color: _cardBorder),
                           const SizedBox(height: 12),
-                          const Text('No reports yet',
-                              style: TextStyle(
-                                  color: Color(0xFF0277BD))),
+                          Text('No reports yet',
+                              style: TextStyle(color: _subtitleColor)),
                           const SizedBox(height: 16),
                           ElevatedButton.icon(
                             onPressed: _fetchMyReports,
                             icon: const Icon(Icons.refresh),
                             label: const Text('Refresh'),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor:
-                              const Color(0xFF0288D1),
+                              backgroundColor: _iconColor,
                               foregroundColor: Colors.white,
                             ),
                           ),
@@ -659,102 +794,85 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen>
                     )
                         : RefreshIndicator(
                       onRefresh: _fetchMyReports,
-                      color: const Color(0xFF0288D1),
+                      color: _iconColor,
                       child: ListView.builder(
                         padding: const EdgeInsets.all(16),
                         itemCount: _myReports.length,
                         itemBuilder: (context, index) {
                           final r = _myReports[index];
-                          final status =
-                              r['status'] ?? 'Pending';
-                          final isPending =
-                              status == 'Pending';
+                          final status = r['status'] ?? 'Pending';
+                          final isPending = status == 'Pending';
 
                           return Container(
-                            margin: const EdgeInsets.only(
-                                bottom: 12),
+                            margin: const EdgeInsets.only(bottom: 12),
                             decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius:
-                              BorderRadius.circular(12),
-                              border: Border.all(
-                                  color:
-                                  const Color(0xFFB3E5FC)),
+                              color: _cardBg,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: _cardBorder),
                               boxShadow: [
                                 BoxShadow(
-                                  color: const Color(0xFF0288D1)
-                                      .withOpacity(0.07),
+                                  color: const Color(0xFF0288D1).withOpacity(0.07),
                                   blurRadius: 6,
                                   offset: const Offset(0, 2),
                                 ),
                               ],
                             ),
                             child: ListTile(
-                              contentPadding:
-                              const EdgeInsets.all(12),
+                              contentPadding: const EdgeInsets.all(12),
                               leading: r['image'] != null
                                   ? ClipRRect(
-                                borderRadius:
-                                BorderRadius.circular(
-                                    8),
+                                borderRadius: BorderRadius.circular(8),
                                 child: Image.network(
                                   'https://geoflow.duckdns.org/storage/${r['image']}',
                                   width: 56,
                                   height: 56,
                                   fit: BoxFit.cover,
                                   errorBuilder: (_, __, ___) =>
-                                  const Icon(
-                                      Icons.image,
-                                      color: Color(
-                                          0xFF81D4FA)),
+                                      Icon(Icons.image, color: _cardBorder),
                                 ),
                               )
-                                  : const Icon(Icons.image,
-                                  color: Color(0xFF81D4FA)),
+                                  : Icon(Icons.image, color: _cardBorder),
                               title: Text(
                                 r['report_id'] ?? 'Unknown',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontWeight: FontWeight.bold,
-                                  color: Color(0xFF01579B),
+                                  color: _titleColor,
                                   fontSize: 14,
                                 ),
                               ),
                               subtitle: Column(
-                                crossAxisAlignment:
-                                CrossAxisAlignment.start,
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   const SizedBox(height: 4),
-                                  Text(r['type'] ?? '',
-                                      style: const TextStyle(
-                                          fontSize: 12)),
-                                  Text(r['location'] ?? '',
-                                      style: const TextStyle(
-                                          fontSize: 11,
-                                          color: Colors.grey)),
+                                  Text(
+                                    r['type'] ?? '',
+                                    style: TextStyle(
+                                        fontSize: 12, color: _subtitleColor),
+                                  ),
+                                  Text(
+                                    r['location'] ?? '',
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        color: _darkTheme
+                                            ? const Color(0xFF4A6A8A)
+                                            : Colors.grey),
+                                  ),
                                   const SizedBox(height: 4),
                                   Container(
-                                    padding:
-                                    const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 2),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 2),
                                     decoration: BoxDecoration(
-                                      color: _statusColor(status)
-                                          .withOpacity(0.1),
-                                      borderRadius:
-                                      BorderRadius.circular(
-                                          999),
+                                      color: _statusColor(status).withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(999),
                                       border: Border.all(
-                                          color:
-                                          _statusColor(status)),
+                                          color: _statusColor(status)),
                                     ),
                                     child: Text(
                                       status,
                                       style: TextStyle(
                                         fontSize: 11,
-                                        color:
-                                        _statusColor(status),
-                                        fontWeight:
-                                        FontWeight.w600,
+                                        color: _statusColor(status),
+                                        fontWeight: FontWeight.w600,
                                       ),
                                     ),
                                   ),
@@ -762,12 +880,9 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen>
                               ),
                               trailing: isPending
                                   ? IconButton(
-                                icon: const Icon(
-                                    Icons.delete,
+                                icon: const Icon(Icons.delete,
                                     color: Colors.red),
-                                onPressed: () =>
-                                    _deleteMyReport(
-                                        r['id']),
+                                onPressed: () => _deleteMyReport(r['id']),
                               )
                                   : null,
                             ),

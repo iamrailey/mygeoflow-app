@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:convert';
 import '../services/api_service.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -14,6 +15,38 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   List<Map<String, dynamic>> _notifications = [];
   bool _isLoading = true;
   String? _errorMessage;
+
+  // ── Theme ────────────────────────────────────────────────────────
+  bool _darkTheme = false;
+
+  // ── Dark-mode aware colors ───────────────────────────────────────
+  Color get _bgStart       => _darkTheme ? const Color(0xFF1A1A2E) : const Color(0xFFB3E5FC);
+  Color get _bgMid         => _darkTheme ? const Color(0xFF16213E) : const Color(0xFFE1F5FE);
+  Color get _bgEnd         => _darkTheme ? const Color(0xFF0F3460) : const Color(0xFFFFFFFF);
+  Color get _titleColor    => _darkTheme ? const Color(0xFF90CAF9) : const Color(0xFF01579B);
+  Color get _subtitleColor => _darkTheme ? const Color(0xFF64B5F6) : const Color(0xFF0277BD);
+  Color get _iconColor     => _darkTheme ? const Color(0xFF64B5F6) : const Color(0xFF0288D1);
+  Color get _cardBorder    => _darkTheme ? const Color(0xFF2A4A6B) : const Color(0xFF81D4FA);
+  Color get _cardBg        => _darkTheme ? const Color(0xFF1E2A3A) : Colors.white;
+  Color get _unreadCardBg  => _darkTheme ? const Color(0xFF162032) : const Color(0xFFE1F5FE);
+  Color get _readCardBg    => _darkTheme ? const Color(0xFF1E2A3A).withOpacity(0.55) : Colors.white.withOpacity(0.55);
+  Color get _hintColor     => _darkTheme ? const Color(0xFF4A6A8A) : const Color(0xFF81D4FA);
+  Color get _footerColor   => _darkTheme ? const Color(0xFF4A6A8A) : const Color(0xFF81D4FA);
+  Color get _dividerColor  => _darkTheme ? const Color(0xFF2A4A6B) : const Color(0xFF81D4FA);
+
+  List<Color> get _gradientColors => [_bgStart, _bgMid, _bgEnd];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTheme();
+    _fetchNotifications();
+  }
+
+  Future<void> _loadTheme() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() => _darkTheme = prefs.getBool('darkTheme') ?? false);
+  }
 
   IconData _getIcon(String? type) {
     switch (type) {
@@ -47,12 +80,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       default:
         return const Color(0xFF0288D1);
     }
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchNotifications();
   }
 
   Future<void> _fetchNotifications() async {
@@ -113,12 +140,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
       if (response.statusCode == 200) {
         setState(() {
-          _notifications = _notifications.map((n) => {...n, 'isRead': true}).toList();
+          _notifications =
+              _notifications.map((n) => {...n, 'isRead': true}).toList();
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('All notifications marked as read.'),
-            backgroundColor: Color(0xFF0288D1),
+          SnackBar(
+            content: const Text('All notifications marked as read.'),
+            backgroundColor: _iconColor,
           ),
         );
       } else {
@@ -140,7 +168,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final notif = _notifications[index];
     if (notif['isRead'] == true) return;
 
-    // Optimistically mark as read immediately so UI responds instantly
     setState(() {
       _notifications[index] = {...notif, 'isRead': true};
     });
@@ -148,21 +175,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     try {
       final token = await ApiService.getToken();
       final response = await http.post(
-        Uri.parse('${ApiService.baseUrl}/notifications/${notif['id']}/mark-read'),
+        Uri.parse(
+            '${ApiService.baseUrl}/notifications/${notif['id']}/mark-read'),
         headers: {
           'Authorization': 'Bearer $token',
           'Accept': 'application/json',
         },
       );
 
-      // If API call fails, revert the optimistic update
       if (response.statusCode != 200) {
         setState(() {
           _notifications[index] = {...notif, 'isRead': false};
         });
       }
     } catch (_) {
-      // Revert on network error
       setState(() {
         _notifications[index] = {...notif, 'isRead': false};
       });
@@ -192,20 +218,18 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final unreadCount = _notifications.where((n) => n['isRead'] == false).length;
+    final unreadCount =
+        _notifications.where((n) => n['isRead'] == false).length;
 
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
+      body: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFFB3E5FC),
-              Color(0xFFE1F5FE),
-              Color(0xFFFFFFFF),
-            ],
-            stops: [0.0, 0.45, 1.0],
+            colors: _gradientColors,
+            stops: const [0.0, 0.45, 1.0],
           ),
         ),
         child: SafeArea(
@@ -213,19 +237,24 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             children: [
               // ── Custom AppBar ──────────────────────────────────────────
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12.0, vertical: 8.0),
                 child: Row(
                   children: [
-                    const CircleAvatar(
-                      backgroundColor: Color(0xFF0288D1),
-                      child: Icon(Icons.person, color: Colors.white),
+                    CircleAvatar(
+                      backgroundColor: _iconColor,
+                      child:
+                      const Icon(Icons.person, color: Colors.white),
                     ),
                     const Spacer(),
                     Image.asset('assets/logo.png', height: 40),
                     const Spacer(),
                     IconButton(
-                      icon: const Icon(Icons.settings_outlined, color: Color(0xFF0288D1)),
-                      onPressed: () => Navigator.pushNamed(context, '/settings'),
+                      icon: Icon(Icons.settings_outlined, color: _iconColor),
+                      onPressed: () async {
+                        await Navigator.pushNamed(context, '/settings');
+                        _loadTheme();
+                      },
                     ),
                   ],
                 ),
@@ -233,26 +262,28 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
               // ── Header row ─────────────────────────────────────────────
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16.0, vertical: 12.0),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Row(
                       children: [
-                        const Text(
+                        Text(
                           'Notifications',
                           style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
-                            color: Color(0xFF01579B),
+                            color: _titleColor,
                           ),
                         ),
                         if (unreadCount > 0) ...[
                           const SizedBox(width: 8),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF0288D1),
+                              color: _iconColor,
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
@@ -270,18 +301,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     Row(
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.refresh, color: Color(0xFF0288D1), size: 20),
+                          icon: Icon(Icons.refresh,
+                              color: _iconColor, size: 20),
                           onPressed: _fetchNotifications,
                           tooltip: 'Refresh',
                         ),
                         TextButton(
-                          onPressed: unreadCount > 0 ? _markAllAsRead : null,
+                          onPressed:
+                          unreadCount > 0 ? _markAllAsRead : null,
                           child: Text(
                             'Mark all as read',
                             style: TextStyle(
                               color: unreadCount > 0
-                                  ? const Color(0xFF0288D1)
-                                  : const Color(0xFFB3E5FC),
+                                  ? _iconColor
+                                  : _hintColor,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -295,17 +328,19 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               // ── Body ───────────────────────────────────────────────────
               Expanded(
                 child: _isLoading
-                    ? const Center(child: CircularProgressIndicator(color: Color(0xFF0288D1)))
+                    ? Center(
+                    child: CircularProgressIndicator(color: _iconColor))
                     : _errorMessage != null
                     ? Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.wifi_off, color: Color(0xFF81D4FA), size: 48),
+                      Icon(Icons.wifi_off,
+                          color: _hintColor, size: 48),
                       const SizedBox(height: 12),
                       Text(
                         _errorMessage!,
-                        style: const TextStyle(color: Color(0xFF0277BD)),
+                        style: TextStyle(color: _subtitleColor),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 16),
@@ -314,7 +349,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         icon: const Icon(Icons.refresh),
                         label: const Text('Retry'),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF0288D1),
+                          backgroundColor: _iconColor,
                           foregroundColor: Colors.white,
                         ),
                       ),
@@ -322,63 +357,75 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   ),
                 )
                     : _notifications.isEmpty
-                    ? const Center(
+                    ? Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(Icons.notifications_off,
-                          color: Color(0xFF81D4FA), size: 48),
-                      SizedBox(height: 12),
+                          color: _hintColor, size: 48),
+                      const SizedBox(height: 12),
                       Text(
                         'No notifications yet',
-                        style: TextStyle(color: Color(0xFF0277BD), fontSize: 14),
+                        style: TextStyle(
+                            color: _subtitleColor,
+                            fontSize: 14),
                       ),
                     ],
                   ),
                 )
                     : RefreshIndicator(
-                  color: const Color(0xFF0288D1),
+                  color: _iconColor,
                   onRefresh: _fetchNotifications,
                   child: ListView.separated(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16),
                     itemCount: _notifications.length,
                     separatorBuilder: (context, index) =>
-                    const Divider(height: 1, color: Color(0xFF81D4FA)),
+                        Divider(
+                            height: 1,
+                            color: _dividerColor),
                     itemBuilder: (context, index) {
                       final notif = _notifications[index];
-                      final bool isRead = notif['isRead'] as bool;
-                      final String type = notif['type'] ?? '';
+                      final bool isRead =
+                      notif['isRead'] as bool;
+                      final String type =
+                          notif['type'] ?? '';
 
                       return Container(
                         decoration: BoxDecoration(
                           color: isRead
-                              ? Colors.white.withOpacity(0.55)
-                              : const Color(0xFFE1F5FE),
-                          borderRadius: BorderRadius.circular(12),
+                              ? _readCardBg
+                              : _unreadCardBg,
+                          borderRadius:
+                          BorderRadius.circular(12),
                           border: Border.all(
                             color: isRead
-                                ? const Color(0xFFB3E5FC)
-                                : const Color(0xFF81D4FA),
+                                ? _cardBorder
+                                .withOpacity(0.5)
+                                : _cardBorder,
                             width: 1,
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF0288D1).withOpacity(0.07),
+                              color: const Color(0xFF0288D1)
+                                  .withOpacity(0.07),
                               blurRadius: 6,
                               offset: const Offset(0, 2),
                             ),
                           ],
                         ),
-                        margin: const EdgeInsets.symmetric(vertical: 4),
-                        // ✅ onTap is on ListTile directly — GestureDetector removed
+                        margin: const EdgeInsets.symmetric(
+                            vertical: 4),
                         child: ListTile(
-                          onTap: () => _markOneAsRead(index),
-                          contentPadding: const EdgeInsets.symmetric(
-                            vertical: 10,
-                            horizontal: 12,
-                          ),
+                          onTap: () =>
+                              _markOneAsRead(index),
+                          contentPadding:
+                          const EdgeInsets.symmetric(
+                              vertical: 10,
+                              horizontal: 12),
                           leading: CircleAvatar(
-                            backgroundColor: _getColor(type).withOpacity(0.15),
+                            backgroundColor: _getColor(type)
+                                .withOpacity(0.15),
                             child: Icon(
                               _getIcon(type),
                               color: _getColor(type),
@@ -386,7 +433,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                             ),
                           ),
                           title: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            mainAxisAlignment:
+                            MainAxisAlignment
+                                .spaceBetween,
                             children: [
                               Flexible(
                                 child: Text(
@@ -396,27 +445,28 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                     fontWeight: isRead
                                         ? FontWeight.normal
                                         : FontWeight.bold,
-                                    color: const Color(0xFF01579B),
+                                    color: _titleColor,
                                   ),
                                 ),
                               ),
                               const SizedBox(width: 8),
                               Text(
                                 _formatTime(notif['time']),
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 11,
-                                  color: Color(0xFF0288D1),
+                                  color: _iconColor,
                                 ),
                               ),
                             ],
                           ),
                           subtitle: Padding(
-                            padding: const EdgeInsets.only(top: 4),
+                            padding: const EdgeInsets.only(
+                                top: 4),
                             child: Text(
                               notif['message'],
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 12,
-                                color: Color(0xFF0277BD),
+                                color: _subtitleColor,
                               ),
                             ),
                           ),
@@ -424,8 +474,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               ? Container(
                             width: 10,
                             height: 10,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFF0288D1),
+                            decoration: BoxDecoration(
+                              color: _iconColor,
                               shape: BoxShape.circle,
                             ),
                           )
@@ -444,7 +494,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   _notifications.isEmpty
                       ? 'No new notifications yet'
                       : '$unreadCount unread notification${unreadCount == 1 ? '' : 's'}',
-                  style: const TextStyle(fontSize: 12, color: Color(0xFF81D4FA)),
+                  style: TextStyle(fontSize: 12, color: _footerColor),
                 ),
               ),
             ],
