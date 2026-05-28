@@ -53,4 +53,27 @@ class ApiService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('token');
   }
+
+  // Forgot Password
+  static Future<Map<String, dynamic>> resetPasswordDirect({
+    required String email,
+    required String password,
+    required String passwordConfirmation,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/reset-password-direct'), // adjust to match your route
+      headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+      body: jsonEncode({
+        'email': email,
+        'password': password,
+        'password_confirmation': passwordConfirmation, // Laravel's confirmed rule needs this key
+      }),
+    );
+
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) return data;
+    throw data['message'] ?? 'Something went wrong';
+  }
+
+
 }

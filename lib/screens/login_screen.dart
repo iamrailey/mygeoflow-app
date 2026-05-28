@@ -16,7 +16,6 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    // ✅ Clear any snackbars carried over from the previous session
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ScaffoldMessenger.of(context).clearSnackBars();
     });
@@ -173,7 +172,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 16),
 
                 TextButton(
-                  onPressed: () {},
+                  onPressed: () => Navigator.pushNamed(context, '/forgot-password'),
                   child: const Text(
                     'Forgot password?',
                     style: TextStyle(color: Colors.black54),
