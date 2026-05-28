@@ -13,6 +13,15 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
 
+  @override
+  void initState() {
+    super.initState();
+    // ✅ Clear any snackbars carried over from the previous session
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ScaffoldMessenger.of(context).clearSnackBars();
+    });
+  }
+
   void _login() async {
     if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -70,7 +79,6 @@ class _LoginScreenState extends State<LoginScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Title
                 const Text(
                   'Please Log in to\nGeoFlow',
                   textAlign: TextAlign.center,
@@ -81,7 +89,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 32),
 
-                // Email field
                 TextField(
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
@@ -113,7 +120,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // Password field
                 TextField(
                   controller: _passwordController,
                   obscureText: true,
@@ -145,7 +151,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                // Sign In button
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
@@ -167,7 +172,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // Forgot password
                 TextButton(
                   onPressed: () {},
                   child: const Text(
@@ -176,7 +180,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
 
-                // Register link
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [

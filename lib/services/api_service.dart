@@ -1,10 +1,18 @@
 import 'dart:convert';
+import 'dart:io' show Platform;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
-  // For Android emulator, 10.0.2.2 points to your PC's localhost
-  static const String baseUrl = 'https://geoflow.duckdns.org/api';
+  static String get baseUrl {
+    // Check if running on an emulator/simulator
+    if (Platform.isAndroid) {
+      return 'http://10.0.2.2/api';
+    } else if (Platform.isIOS) {
+      return 'http://localhost/api';
+    }
+    return 'https://geoflow.duckdns.org/api';
+  }
 
   // Register
   static Future<Map<String, dynamic>> register(

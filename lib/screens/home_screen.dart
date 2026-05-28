@@ -18,12 +18,24 @@ class _HomeScreenState extends State<HomeScreen> {
   String _userName = 'User';
   String _userEmail = '';
   String? _avatarUrl;
+  bool _snackbarShown = false; // ✅ prevent showing more than once per session
 
   @override
   void initState() {
     super.initState();
     _fetchUserProfile();
     _fetchUnreadCount();
+  }
+
+  @override
+  void dispose() {
+    // ✅ hide any lingering snackbar when this screen is disposed (e.g. on logout)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      }
+    });
+    super.dispose();
   }
 
   Future<void> _fetchUserProfile() async {
@@ -44,10 +56,12 @@ class _HomeScreenState extends State<HomeScreen> {
           _avatarUrl = data['avatar_url'];
         });
 
-        // ── Show reminder if phone is not set ──
-        // ── Show reminder if phone is not set ──
-        if ((data['phone'] == null || data['phone'].toString().isEmpty) && mounted) {
+        // ✅ Only show once per session, only if mounted, only if no phone
+        final hasNoPhone = data['phone'] == null || data['phone'].toString().isEmpty;
+        if (hasNoPhone && mounted && !_snackbarShown) {
+          _snackbarShown = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return; // ✅ guard: don't show if already navigated away
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: const Row(
@@ -317,9 +331,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: const Icon(Icons.logout, color: Colors.white, size: 22),
               ),
               const SizedBox(height: 16),
-              const Text('Logout', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF01579B))),
+              const Text('Logout',
+                  style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF01579B))),
               const SizedBox(height: 8),
-              const Text('Are you sure you want to logout?', style: TextStyle(fontSize: 13, color: Color(0xFF0277BD)), textAlign: TextAlign.center),
+              const Text('Are you sure you want to logout?',
+                  style: TextStyle(fontSize: 13, color: Color(0xFF0277BD)),
+                  textAlign: TextAlign.center),
               const SizedBox(height: 24),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -327,21 +347,34 @@ class _HomeScreenState extends State<HomeScreen> {
                   OutlinedButton(
                     onPressed: () => Navigator.pop(context),
                     style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
-                      side: const BorderSide(color: Color(0xFF0288D1), width: 1.5),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 28, vertical: 12),
+                      side: const BorderSide(
+                          color: Color(0xFF0288D1), width: 1.5),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
                     ),
-                    child: const Text('Cancel', style: TextStyle(color: Color(0xFF0288D1), fontWeight: FontWeight.w600)),
+                    child: const Text('Cancel',
+                        style: TextStyle(
+                            color: Color(0xFF0288D1),
+                            fontWeight: FontWeight.w600)),
                   ),
                   DecoratedBox(
                     decoration: BoxDecoration(
                       color: Colors.red.shade400,
                       borderRadius: BorderRadius.circular(10),
-                      boxShadow: [BoxShadow(color: Colors.red.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))],
+                      boxShadow: [
+                        BoxShadow(
+                            color: Colors.red.withOpacity(0.3),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4))
+                      ],
                     ),
                     child: ElevatedButton(
                       onPressed: () {
-                        ScaffoldMessenger.of(context).hideCurrentSnackBar(); // 👈 ADD THIS
+                        // ✅ clear ALL snackbars before navigating away
+                        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                        ScaffoldMessenger.of(context).clearSnackBars();
                         Navigator.pop(context);
                         Navigator.pushNamedAndRemoveUntil(
                           context,
@@ -352,10 +385,15 @@ class _HomeScreenState extends State<HomeScreen> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.transparent,
                         shadowColor: Colors.transparent,
-                        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 28, vertical: 12),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10)),
                       ),
-                      child: const Text('Logout', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                      child: const Text('Logout',
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600)),
                     ),
                   ),
                 ],
@@ -404,8 +442,7 @@ class _HomeScreenState extends State<HomeScreen> {
         centerTitle: true,
         actions: [
           IconButton(
-            icon: const Icon(Icons.settings_outlined,
-                color: Color(0xFF0288D1)),
+            icon: const Icon(Icons.settings_outlined, color: Color(0xFF0288D1)),
             onPressed: () => Navigator.pushNamed(context, '/settings'),
           ),
         ],
