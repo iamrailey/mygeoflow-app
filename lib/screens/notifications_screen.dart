@@ -46,11 +46,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   Future<void> _loadTheme() async {
     final prefs = await SharedPreferences.getInstance();
-    setState(() => _darkTheme = prefs.getBool('darkTheme') ?? false);
+
+    setState(() {
+      _darkTheme = prefs.getBool('darkTheme') ?? false;
+    });
 
     // Fetch avatar from API
     try {
       final token = await ApiService.getToken();
+
       final response = await http.get(
         Uri.parse('${ApiService.baseUrl}/user'),
         headers: {
@@ -58,13 +62,30 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           'Accept': 'application/json',
         },
       );
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        if (mounted) {
-          setState(() => _avatarUrl = data['avatar_url']);
+
+        String? avatar = data['avatar_url'];
+
+        // FIX: convert relative path to full URL
+        if (avatar != null &&
+            avatar.isNotEmpty &&
+            !avatar.startsWith('http')) {
+          avatar = 'https://geoflow.duckdns.org/storage/$avatar';
         }
+
+        if (mounted) {
+          setState(() {
+            _avatarUrl = avatar;
+          });
+        }
+
+        print('Notification Avatar URL: $_avatarUrl');
       }
-    } catch (_) {}
+    } catch (e) {
+      print('Notification Avatar Error: $e');
+    }
   }
 
   IconData _getIcon(String? type) {

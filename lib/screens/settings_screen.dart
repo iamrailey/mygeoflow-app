@@ -43,6 +43,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _fetchUserProfile() async {
     try {
       final token = await ApiService.getToken();
+
       final response = await http.get(
         Uri.parse('${ApiService.baseUrl}/user'),
         headers: {
@@ -50,15 +51,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
           'Accept': 'application/json',
         },
       );
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        setState(() {
-          _userName = data['name'] ?? 'User Name';
-          _userEmail = data['email'] ?? 'user@email.com';
-          _avatarUrl = data['avatar_url']; // ← ADDED
-        });
+
+        String? avatar = data['avatar_url'];
+
+        // FIX avatar URL
+        if (avatar != null &&
+            avatar.isNotEmpty &&
+            !avatar.startsWith('http')) {
+          avatar = 'https://geoflow.duckdns.org/storage/$avatar';
+        }
+
+        if (mounted) {
+          setState(() {
+            _userName = data['name'] ?? 'User Name';
+            _userEmail = data['email'] ?? 'user@email.com';
+            _avatarUrl = avatar;
+          });
+        }
+
+        print('Avatar URL: $_avatarUrl');
       }
-    } catch (_) {}
+    } catch (e) {
+      print('Profile Error: $e');
+    }
   }
 
   void _logout(BuildContext context) {
@@ -188,15 +206,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // ── ADDED: builds the profile avatar (network image or fallback icon) ────
   Widget _buildAvatar() {
     return CircleAvatar(
-      radius: 24,
-      backgroundColor: _darkTheme
-          ? const Color(0xFF2A4A6B)
-          : const Color(0xFFB3E5FC),
-      backgroundImage: (_avatarUrl != null && _avatarUrl!.isNotEmpty)
+      radius: 20,
+      backgroundColor: _iconColor,
+      backgroundImage:
+      (_avatarUrl != null && _avatarUrl!.isNotEmpty)
           ? NetworkImage(_avatarUrl!)
           : null,
       child: (_avatarUrl == null || _avatarUrl!.isEmpty)
-          ? Icon(Icons.person, color: _iconColor, size: 28)
+          ? const Icon(Icons.person, color: Colors.white)
           : null,
     );
   }

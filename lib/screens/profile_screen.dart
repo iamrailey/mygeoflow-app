@@ -151,8 +151,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       if (response.statusCode == 200) {
         // Refresh the avatar URL from the server response if present
-        if (body['avatar_url'] != null) {
-          setState(() => _avatarUrl = body['avatar_url']);
+        if (body['avatar_url'] != null &&
+            body['avatar_url'].toString().isNotEmpty) {
+          setState(() {
+            _avatarUrl =
+            '${ApiService.baseUrl}${body['avatar_url']}';
+          });
         }
         _showSuccess();
       } else {

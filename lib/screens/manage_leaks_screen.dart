@@ -65,6 +65,7 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen>
   Future<void> _fetchUserProfile() async {
     try {
       final token = await ApiService.getToken();
+
       final response = await http.get(
         Uri.parse('${ApiService.baseUrl}/user'),
         headers: {
@@ -72,13 +73,30 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen>
           'Accept': 'application/json',
         },
       );
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        setState(() {
-          _avatarUrl = data['avatar_url'];
-        });
+
+        String? avatar = data['avatar_url'];
+
+        // IMPORTANT FIX
+        if (avatar != null &&
+            avatar.isNotEmpty &&
+            !avatar.startsWith('http')) {
+          avatar = 'https://geoflow.duckdns.org/storage/$avatar';
+        }
+
+        if (mounted) {
+          setState(() {
+            _avatarUrl = avatar;
+          });
+        }
+
+        print('Avatar URL: $_avatarUrl');
       }
-    } catch (_) {}
+    } catch (e) {
+      print('Avatar Error: $e');
+    }
   }
 
   // ── Dark-mode aware colors ───────────────────────────────────────
@@ -101,8 +119,10 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen>
   // ── ADDED: builds the profile avatar (network image or fallback) ─
   Widget _buildAvatar() {
     return CircleAvatar(
+      radius: 20,
       backgroundColor: _iconColor,
-      backgroundImage: (_avatarUrl != null && _avatarUrl!.isNotEmpty)
+      backgroundImage:
+      (_avatarUrl != null && _avatarUrl!.isNotEmpty)
           ? NetworkImage(_avatarUrl!)
           : null,
       child: (_avatarUrl == null || _avatarUrl!.isEmpty)

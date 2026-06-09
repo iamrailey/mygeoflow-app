@@ -5,9 +5,11 @@ import '../screens/home_screen.dart';
 import '../screens/manage_leaks_screen.dart';
 import '../screens/notifications_screen.dart';
 import '../services/api_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
+
 
   @override
   State<MainScreen> createState() => _MainScreenState();
@@ -16,6 +18,7 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
   int _unreadCount = 0;
+  bool _darkTheme = false;
 
   final List<Widget> _screens = [
     const HomeScreen(),
@@ -24,9 +27,19 @@ class _MainScreenState extends State<MainScreen> {
   ];
 
   @override
+  @override
   void initState() {
     super.initState();
+    _loadTheme();
     _fetchUnreadCount();
+  }
+
+  Future<void> _loadTheme() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    setState(() {
+      _darkTheme = prefs.getBool('darkTheme') ?? false;
+    });
   }
 
   Future<void> _fetchUnreadCount() async {
@@ -88,28 +101,62 @@ class _MainScreenState extends State<MainScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: _screens[_currentIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: _onTabTapped,
-        selectedItemColor: Colors.black,
-        unselectedItemColor: Colors.grey,
-        showSelectedLabels: true,
-        showUnselectedLabels: true,
-        items: [
-          const BottomNavigationBarItem(
-            icon: Icon(Icons.camera_alt_outlined),
-            label: 'Report Leak',
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: _navBg,
+          border: Border(
+            top: BorderSide(
+              color: _borderColor,
+              width: 1,
+            ),
           ),
-          const BottomNavigationBarItem(
-            icon: Icon(Icons.edit_outlined),
-            label: 'Manage Leaks',
-          ),
-          BottomNavigationBarItem(
-            icon: _notifIcon(),
-            label: 'Notifications',
-          ),
-        ],
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(_darkTheme ? 0.25 : 0.08),
+              blurRadius: 10,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: BottomNavigationBar(
+          currentIndex: _currentIndex,
+          onTap: _onTabTapped,
+          backgroundColor: _navBg,
+          selectedItemColor: _selectedColor,
+          unselectedItemColor: _unselectedColor,
+          type: BottomNavigationBarType.fixed,
+          elevation: 0,
+          showSelectedLabels: true,
+          showUnselectedLabels: true,
+          items: [
+            const BottomNavigationBarItem(
+              icon: Icon(Icons.camera_alt_outlined),
+              label: 'Report Leak',
+            ),
+            const BottomNavigationBarItem(
+              icon: Icon(Icons.edit_outlined),
+              label: 'Manage Leaks',
+            ),
+            BottomNavigationBarItem(
+              icon: _notifIcon(),
+              label: 'Notifications',
+            ),
+          ],
+        ),
       ),
     );
   }
+
+  Color get _navBg =>
+      _darkTheme ? const Color(0xFF1E2A3A) : Colors.white;
+
+  Color get _selectedColor =>
+      _darkTheme ? const Color(0xFF64B5F6) : Colors.black;
+
+  Color get _unselectedColor =>
+      _darkTheme ? const Color(0xFF90A4AE) : Colors.grey;
+
+  Color get _borderColor =>
+      _darkTheme ? const Color(0xFF2A4A6B) : const Color(0xFFE0E0E0);
+
 }

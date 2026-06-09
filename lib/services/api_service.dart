@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+
 class ApiService {
   // For Android emulator, 10.0.2.2 points to your PC's localhost
   static const String baseUrl = 'https://geoflow.duckdns.org/api';
@@ -74,6 +75,9 @@ class ApiService {
     if (response.statusCode == 200) return data;
     throw data['message'] ?? 'Something went wrong';
   }
+
+
+
 
 
 }
