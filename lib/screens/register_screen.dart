@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
+import 'otp_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -15,25 +16,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   bool _isLoading = false;
+  bool _showPassword = false;
+  bool _showConfirmPassword = false;
 
-  // ── Theme ────────────────────────────────────────────────────────
   bool _darkTheme = false;
 
-  // ── Dark-mode aware colors ───────────────────────────────────────
-  Color get _bgStart         => _darkTheme ? const Color(0xFF1A1A2E) : const Color(0xFFB8D9F8);
-  Color get _bgMid           => _darkTheme ? const Color(0xFF16213E) : const Color(0xFF5AACEE);
-  Color get _bgEnd           => _darkTheme ? const Color(0xFF0F3460) : const Color(0xFF1A78C2);
-  Color get _cardBg          => _darkTheme ? const Color(0xFF1E2A3A) : Colors.white.withOpacity(0.92);
-  Color get _titleColor      => _darkTheme ? const Color(0xFF90CAF9) : const Color(0xFF0D4F8C);
-  Color get _inputTextColor  => _darkTheme ? const Color(0xFFE0E0E0) : Colors.black87;
-  Color get _labelColor      => _darkTheme ? const Color(0xFF64B5F6) : const Color(0xFF1A78C2);
-  Color get _hintColor       => _darkTheme ? const Color(0xFF4A6A8A) : Colors.grey;
-  Color get _borderColor     => _darkTheme ? const Color(0xFF2A4A6B) : const Color(0xFF5AACEE);
-  Color get _focusedBorder   => _darkTheme ? const Color(0xFF64B5F6) : const Color(0xFF1A78C2);
-  Color get _buttonColor     => _darkTheme ? const Color(0xFF1565C0) : const Color(0xFF1A78C2);
-  Color get _linkColor       => _darkTheme ? const Color(0xFF64B5F6) : const Color(0xFF1A78C2);
-  Color get _plainTextColor  => _darkTheme ? const Color(0xFFB0BEC5) : const Color(0xFF444444);
-  Color get _cardShadow      => _darkTheme ? Colors.black.withOpacity(0.4) : Colors.black.withOpacity(0.12);
+  Color get _bgStart        => _darkTheme ? const Color(0xFF1A1A2E) : const Color(0xFFB8D9F8);
+  Color get _bgMid          => _darkTheme ? const Color(0xFF16213E) : const Color(0xFF5AACEE);
+  Color get _bgEnd          => _darkTheme ? const Color(0xFF0F3460) : const Color(0xFF1A78C2);
+  Color get _cardBg         => _darkTheme ? const Color(0xFF1E2A3A) : Colors.white.withOpacity(0.92);
+  Color get _titleColor     => _darkTheme ? const Color(0xFF90CAF9) : const Color(0xFF0D4F8C);
+  Color get _inputTextColor => _darkTheme ? const Color(0xFFE0E0E0) : Colors.black87;
+  Color get _labelColor     => _darkTheme ? const Color(0xFF64B5F6) : const Color(0xFF1A78C2);
+  Color get _hintColor      => _darkTheme ? const Color(0xFF4A6A8A) : Colors.grey;
+  Color get _borderColor    => _darkTheme ? const Color(0xFF2A4A6B) : const Color(0xFF5AACEE);
+  Color get _focusedBorder  => _darkTheme ? const Color(0xFF64B5F6) : const Color(0xFF1A78C2);
+  Color get _buttonColor    => _darkTheme ? const Color(0xFF1565C0) : const Color(0xFF1A78C2);
+  Color get _linkColor      => _darkTheme ? const Color(0xFF64B5F6) : const Color(0xFF1A78C2);
+  Color get _plainTextColor => _darkTheme ? const Color(0xFFB0BEC5) : const Color(0xFF444444);
+  Color get _cardShadow     => _darkTheme ? Colors.black.withOpacity(0.4) : Colors.black.withOpacity(0.12);
 
   List<Color> get _gradientColors => [_bgStart, _bgMid, _bgEnd];
 
@@ -48,12 +49,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => _darkTheme = prefs.getBool('darkTheme') ?? false);
   }
 
-  InputDecoration _inputDecoration(String label, String hint) {
+  InputDecoration _inputDecoration(String label, String hint, {Widget? suffixIcon}) {
     return InputDecoration(
       labelText: label,
       labelStyle: TextStyle(color: _labelColor),
       hintText: hint,
       hintStyle: TextStyle(color: _hintColor),
+      suffixIcon: suffixIcon,
       filled: true,
       fillColor: _darkTheme ? const Color(0xFF162032) : Colors.transparent,
       border: OutlineInputBorder(
@@ -71,50 +73,57 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
+  void _showSnack(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
   void _register() async {
-    if (_nameController.text.isEmpty ||
-        _emailController.text.isEmpty ||
-        _passwordController.text.isEmpty ||
-        _confirmPasswordController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill in all fields!')),
-      );
+    final name = _nameController.text.trim();
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+    final confirm = _confirmPasswordController.text;
+
+    // Client-side validation first
+    if (name.isEmpty || email.isEmpty || password.isEmpty || confirm.isEmpty) {
+      _showSnack('Please fill in all fields!');
       return;
     }
 
-    if (_passwordController.text != _confirmPasswordController.text) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Passwords do not match!')),
-      );
+    if (password.length < 6) {
+      _showSnack('Password must be at least 6 characters.');
+      return;
+    }
+
+    if (password != confirm) {
+      _showSnack('Passwords do not match!');
       return;
     }
 
     setState(() => _isLoading = true);
 
     try {
-      final response = await ApiService.register(
-        _nameController.text,
-        _emailController.text,
-        _passwordController.text,
-      );
+      final response = await ApiService.register(name, email, password);
+      setState(() => _isLoading = false);
 
-      if (response['token'] != null) {
-        await ApiService.saveToken(response['token']);
-        setState(() => _isLoading = false);
-        Navigator.pushReplacementNamed(context, '/login');
-      } else {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(response['message'] ?? 'Registration failed!')),
+      final message = response['message']?.toString() ?? '';
+
+      if (response['email'] != null || message.contains('verify')) {
+        if (!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => OtpScreen(
+              email: email,
+              purpose: OtpPurpose.emailVerification,
+            ),
+          ),
         );
+      } else {
+        _showSnack(message.isNotEmpty ? message : 'Registration failed!');
       }
     } catch (e) {
       setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Connection error! Is the server running?')),
-      );
+      _showSnack('Connection error: $e');
     }
   }
 
@@ -133,26 +142,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(
-              padding:
-              const EdgeInsets.symmetric(horizontal: 28.0, vertical: 24),
+              padding: const EdgeInsets.symmetric(horizontal: 28.0, vertical: 24),
               child: Container(
                 padding: const EdgeInsets.all(28),
                 decoration: BoxDecoration(
                   color: _cardBg,
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
-                    BoxShadow(
-                      color: _cardShadow,
-                      blurRadius: 24,
-                      offset: const Offset(0, 8),
-                    ),
+                    BoxShadow(color: _cardShadow, blurRadius: 24, offset: const Offset(0, 8)),
                   ],
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    // Title
                     Text(
                       "Don't have an account?\nPlease Sign Up to Geoflow",
                       textAlign: TextAlign.center,
@@ -164,7 +167,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                     const SizedBox(height: 28),
 
-                    // Name field
                     TextField(
                       controller: _nameController,
                       style: TextStyle(color: _inputTextColor),
@@ -172,7 +174,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                     const SizedBox(height: 14),
 
-                    // Email field
                     TextField(
                       controller: _emailController,
                       keyboardType: TextInputType.emailAddress,
@@ -181,27 +182,42 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                     const SizedBox(height: 14),
 
-                    // Password field
                     TextField(
                       controller: _passwordController,
-                      obscureText: true,
+                      obscureText: !_showPassword,
                       style: TextStyle(color: _inputTextColor),
-                      decoration:
-                      _inputDecoration('Password', 'Enter your password'),
+                      decoration: _inputDecoration(
+                        'Password',
+                        'Enter your password',
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _showPassword ? Icons.visibility_off : Icons.visibility,
+                            color: _hintColor,
+                          ),
+                          onPressed: () => setState(() => _showPassword = !_showPassword),
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 14),
 
-                    // Confirm Password field
                     TextField(
                       controller: _confirmPasswordController,
-                      obscureText: true,
+                      obscureText: !_showConfirmPassword,
                       style: TextStyle(color: _inputTextColor),
                       decoration: _inputDecoration(
-                          'Confirm Password', 'Re-enter your password'),
+                        'Confirm Password',
+                        'Re-enter your password',
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _showConfirmPassword ? Icons.visibility_off : Icons.visibility,
+                            color: _hintColor,
+                          ),
+                          onPressed: () => setState(() => _showConfirmPassword = !_showConfirmPassword),
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 24),
 
-                    // Register button
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
@@ -215,30 +231,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           elevation: 3,
                         ),
                         child: _isLoading
-                            ? const CircularProgressIndicator(
-                            color: Colors.white)
+                            ? const CircularProgressIndicator(color: Colors.white)
                             : const Text(
                           'Register',
                           style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600),
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ),
                     const SizedBox(height: 16),
 
-                    // Login link
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text(
-                          "Already have an account? ",
-                          style: TextStyle(color: _plainTextColor),
-                        ),
+                        Text("Already have an account? ",
+                            style: TextStyle(color: _plainTextColor)),
                         GestureDetector(
-                          onTap: () =>
-                              Navigator.pushNamed(context, '/login'),
+                          onTap: () => Navigator.pushNamed(context, '/login'),
                           child: Text(
                             'Sign In',
                             style: TextStyle(

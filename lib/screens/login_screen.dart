@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
+import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -211,10 +212,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 // ── Forgot password ──────────────────────────────────────
                 TextButton(
-                  onPressed: () => Navigator.pushNamed(context, '/forgot-password'),
-                  child: Text(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const ForgotPasswordScreen(),
+                    ),
+                  ),
+                  child: const Text(
                     'Forgot password?',
-                    style: TextStyle(color: _subtitleColor),
+                    style: TextStyle(color: Colors.black54),
                   ),
                 ),
 

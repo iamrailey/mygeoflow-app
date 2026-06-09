@@ -35,7 +35,6 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _darkTheme = prefs.getBool('darkTheme') ?? false);
   }
 
-  // ── Dark-mode aware colors ───────────────────────────────────────────────
   Color get _bgStart      => _darkTheme ? const Color(0xFF1A1A2E) : const Color(0xFFB3E5FC);
   Color get _bgMid        => _darkTheme ? const Color(0xFF16213E) : const Color(0xFFE1F5FE);
   Color get _bgEnd        => _darkTheme ? const Color(0xFF0F3460) : const Color(0xFFFFFFFF);
@@ -81,7 +80,11 @@ class _HomeScreenState extends State<HomeScreen> {
           _snackbarShown = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
+            // ← FIX: capture context into a local variable at the point
+            // the callback fires, so the SnackBarAction closure holds
+            // the live BuildContext rather than a potentially stale one.
+            final ctx = context;
+            ScaffoldMessenger.of(ctx).showSnackBar(
               SnackBar(
                 content: const Row(
                   children: [
@@ -100,7 +103,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 action: SnackBarAction(
                   label: 'Add Now',
                   textColor: Colors.white,
-                  onPressed: () => Navigator.pushNamed(context, '/profile'),
+                  onPressed: () {
+                    // ← FIX: use Navigator.of(ctx) instead of
+                    // Navigator.pushNamed(context, ...) so we're
+                    // navigating on the correct live context.
+                    Navigator.of(ctx).pushNamed('/profile');
+                  },
                 ),
               ),
             );
@@ -201,7 +209,6 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // drag handle
                   Container(
                     width: 40,
                     height: 4,
@@ -246,7 +253,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     },
                   ),
                   const SizedBox(height: 10),
-                  // Logout tile
                   Container(
                     decoration: BoxDecoration(
                       color: _cardBg,
@@ -464,7 +470,7 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: Icon(Icons.settings_outlined, color: _iconColor),
             onPressed: () async {
               await Navigator.pushNamed(context, '/settings');
-              _loadTheme(); // reload theme when returning from settings
+              _loadTheme();
             },
           ),
         ],

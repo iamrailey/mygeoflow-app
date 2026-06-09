@@ -1,11 +1,18 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
-
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class ApiService {
-  // For Android emulator, 10.0.2.2 points to your PC's localhost
   static const String baseUrl = 'https://geoflow.duckdns.org/api';
+
+  // ── Use flutter_secure_storage instead of SharedPreferences ──────
+  // Tokens are sensitive — SharedPreferences stores them unencrypted
+  // on disk; FlutterSecureStorage uses Android Keystore / iOS Keychain.
+  static const _storage = FlutterSecureStorage(
+    aOptions: AndroidOptions(
+      encryptedSharedPreferences: true, // AES encryption via Jetpack Security
+    ),
+  );
 
   // Register
   static Future<Map<String, dynamic>> register(
@@ -37,47 +44,18 @@ class ApiService {
     return jsonDecode(response.body);
   }
 
-  // Save token
+  // Save token — now encrypted via Keystore/Keychain
   static Future<void> saveToken(String token) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('token', token);
+    await _storage.write(key: 'auth_token', value: token);
   }
 
   // Get token
   static Future<String?> getToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('token');
+    return await _storage.read(key: 'auth_token');
   }
 
-  // Delete token (logout)
+  // Delete token (logout) — wipes from secure storage
   static Future<void> deleteToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('token');
+    await _storage.delete(key: 'auth_token');
   }
-
-  // Forgot Password
-  static Future<Map<String, dynamic>> resetPasswordDirect({
-    required String email,
-    required String password,
-    required String passwordConfirmation,
-  }) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/reset-password-direct'), // adjust to match your route
-      headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
-      body: jsonEncode({
-        'email': email,
-        'password': password,
-        'password_confirmation': passwordConfirmation, // Laravel's confirmed rule needs this key
-      }),
-    );
-
-    final data = jsonDecode(response.body);
-    if (response.statusCode == 200) return data;
-    throw data['message'] ?? 'Something went wrong';
-  }
-
-
-
-
-
 }

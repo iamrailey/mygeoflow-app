@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../services/api_service.dart';
+import 'otp_screen.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -10,32 +13,18 @@ class ForgotPasswordScreen extends StatefulWidget {
 
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  final _confirmPasswordController = TextEditingController();
   bool _isLoading = false;
-  bool _obscurePassword = true;
-  bool _obscureConfirm = true;
 
-  void _submit() async {
-    if (_emailController.text.isEmpty ||
-        _passwordController.text.isEmpty ||
-        _confirmPasswordController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill in all fields.')),
-      );
-      return;
-    }
+  @override
+  void dispose() {
+    _emailController.dispose();
+    super.dispose();
+  }
 
-    if (_passwordController.text != _confirmPasswordController.text) {
+  Future<void> _sendOtp() async {
+    if (_emailController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Passwords do not match.')),
-      );
-      return;
-    }
-
-    if (_passwordController.text.length < 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Password must be at least 6 characters.')),
+        const SnackBar(content: Text('Please enter your email address.')),
       );
       return;
     }
@@ -43,30 +32,42 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final response = await ApiService.resetPasswordDirect(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
-        passwordConfirmation: _confirmPasswordController.text,
+      final response = await http.post(
+        Uri.parse('${ApiService.baseUrl}/forgot-password/send-otp'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: jsonEncode({'email': _emailController.text.trim()}),
       );
+
+      final body = jsonDecode(response.body);
       setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(response['message'] ?? 'Password updated!')),
-      );
-      Navigator.pop(context);
+
+      if (response.statusCode == 200) {
+        if (!mounted) return;
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => OtpScreen(
+              email: _emailController.text.trim(),
+              purpose: OtpPurpose.passwordReset,
+            ),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(body['message'] ?? 'Email not found.')),
+        );
+      }
     } catch (e) {
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
+        const SnackBar(
+            content: Text('Connection error. Please try again.')),
       );
     }
-  }
-
-  @override
-  void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
-    _confirmPasswordController.dispose();
-    super.dispose();
   }
 
   @override
@@ -79,117 +80,110 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           icon: const Icon(Icons.arrow_back, color: Colors.black),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('Reset Password', style: TextStyle(color: Colors.black)),
+        title: const Text('Forgot Password',
+            style: TextStyle(color: Colors.black)),
       ),
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFFEBF5FF), Color(0xFFDCEEFB), Color(0xFFC9E4FA)],
+            colors: [
+              Color(0xFFEBF5FF),
+              Color(0xFFDCEEFB),
+              Color(0xFFC9E4FA),
+            ],
             stops: [0.0, 0.40, 1.0],
           ),
         ),
         child: SafeArea(
-          child: SingleChildScrollView(
+          child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 32.0),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const SizedBox(height: 60),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                        color: Colors.blue.shade100, width: 2),
+                  ),
+                  child: Icon(Icons.lock_outline,
+                      size: 40, color: Colors.blue.shade400),
+                ),
+                const SizedBox(height: 24),
+
                 const Text(
-                  'Reset Password',
-                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+                  'Forgot password?',
+                  style: TextStyle(
+                      fontSize: 22, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Enter your email and choose a new password.',
+                  "No worries! Enter your email and we'll send you a 6-digit reset code.",
+                  style: TextStyle(color: Colors.black54, fontSize: 14),
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.black54),
                 ),
                 const SizedBox(height: 32),
-                // Email field
+
                 TextField(
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
-                  decoration: _inputDecoration('Email', 'Enter your email'),
-                ),
-                const SizedBox(height: 16),
-                // New password field
-                TextField(
-                  controller: _passwordController,
-                  obscureText: _obscurePassword,
-                  decoration: _inputDecoration('New Password', 'Enter new password').copyWith(
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _obscurePassword ? Icons.visibility_off : Icons.visibility,
-                        color: Colors.blue.shade300,
-                      ),
-                      onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                // Confirm password field
-                TextField(
-                  controller: _confirmPasswordController,
-                  obscureText: _obscureConfirm,
-                  decoration: _inputDecoration('Confirm Password', 'Re-enter new password').copyWith(
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _obscureConfirm ? Icons.visibility_off : Icons.visibility,
-                        color: Colors.blue.shade300,
-                      ),
-                      onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
-                    ),
+                  decoration: InputDecoration(
+                    labelText: 'Email',
+                    hintText: 'Enter your email',
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none),
+                    enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                            color: Colors.blue.shade100, width: 1.5)),
+                    focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                            color: Colors.blue.shade300, width: 2)),
+                    labelStyle:
+                    TextStyle(color: Colors.blue.shade300),
                   ),
                 ),
                 const SizedBox(height: 24),
+
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: _isLoading ? null : _submit,
+                    onPressed: _isLoading ? null : _sendOtp,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.black,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      padding:
+                      const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
+                          borderRadius: BorderRadius.circular(8)),
                     ),
                     child: _isLoading
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : const Text('Reset Password',
-                        style: TextStyle(color: Colors.white, fontSize: 16)),
+                        ? const CircularProgressIndicator(
+                        color: Colors.white)
+                        : const Text('Send Reset Code',
+                        style: TextStyle(
+                            color: Colors.white, fontSize: 16)),
                   ),
                 ),
-                const SizedBox(height: 40),
+                const SizedBox(height: 16),
+
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('← Back to login',
+                      style: TextStyle(color: Colors.black54)),
+                ),
               ],
             ),
           ),
         ),
       ),
-    );
-  }
-
-  InputDecoration _inputDecoration(String label, String hint) {
-    return InputDecoration(
-      labelText: label,
-      hintText: hint,
-      filled: true,
-      fillColor: Colors.white,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide.none,
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.blue.shade100, width: 1.5),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.blue.shade300, width: 2),
-      ),
-      labelStyle: TextStyle(color: Colors.blue.shade300),
     );
   }
 }
