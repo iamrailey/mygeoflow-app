@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'dart:convert';
+import 'dart:async';
 import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:image_picker/image_picker.dart';
 import '../services/api_service.dart';
 
 class ManageLeaksScreen extends StatefulWidget {
@@ -31,17 +33,26 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen>
 
   bool _darkTheme = false;
   String? _avatarUrl;
+  bool _isUploadingAvatar = false;
 
   @override
   void initState() {
     super.initState();
     _loadTheme();
     _fetchUserProfile();
+    _checkRoleAccess();
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
       if (_tabController.index == 1) _fetchMyReports();
     });
     _getLocation();
+  }
+
+  Future<void> _checkRoleAccess() async {
+    final role = await ApiService.getRole();
+    if (role == 'inspector' && mounted) {
+      Navigator.pushReplacementNamed(context, '/main');
+    }
   }
 
   @override
@@ -65,9 +76,71 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen>
       );
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        setState(() => _avatarUrl = data['avatar_url']);
+        String? avatar = data['avatar_url'];
+        if (avatar != null && avatar.isNotEmpty && !avatar.startsWith('http')) {
+          avatar = 'https://geoflow.duckdns.org/storage/$avatar';
+        }
+        setState(() => _avatarUrl = avatar);
       }
     } catch (_) {}
+  }
+
+  // ── Avatar Upload ──────────────────────────────────────────────────────
+  Future<void> _pickAndUploadAvatar() async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 500,
+      maxHeight: 500,
+      imageQuality: 80,
+    );
+
+    if (image == null) return;
+
+    setState(() => _isUploadingAvatar = true);
+
+    try {
+      final token = await ApiService.getToken();
+      var request = http.MultipartRequest(
+        'POST',
+        Uri.parse('${ApiService.baseUrl}/user/avatar'),
+      );
+      request.headers['Authorization'] = 'Bearer $token';
+      request.headers['Accept'] = 'application/json';
+      request.files.add(
+        await http.MultipartFile.fromPath('avatar', image.path),
+      );
+
+      final response = await request.send();
+      final body = await response.stream.bytesToString();
+      final data = jsonDecode(body);
+
+      if (response.statusCode == 200) {
+        String? avatarPath = data['avatar_url'];
+        if (avatarPath != null && avatarPath.isNotEmpty) {
+          final fullUrl = 'https://geoflow.duckdns.org/storage/$avatarPath';
+          setState(() {
+            _avatarUrl = fullUrl;
+          });
+          PaintingBinding.instance.imageCache.clear();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Avatar updated successfully!')),
+          );
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed: ${data['message'] ?? 'Unknown error'}')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isUploadingAvatar = false);
+      }
+    }
   }
 
   Color get _bgStart        => _darkTheme ? const Color(0xFF1A1A2E) : const Color(0xFFB3E5FC);
@@ -86,13 +159,67 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen>
 
   List<Color> get _gradientColors => [_bgStart, _bgMid, _bgEnd];
 
-  Widget _buildAvatar() {
-    return CircleAvatar(
-      backgroundColor: _iconColor,
-      backgroundImage: (_avatarUrl != null && _avatarUrl!.isNotEmpty)
-          ? NetworkImage(_avatarUrl!) : null,
-      child: (_avatarUrl == null || _avatarUrl!.isEmpty)
-          ? const Icon(Icons.person, color: Colors.white) : null,
+  Widget _buildAvatar({bool showCameraBadge = false}) {
+    return GestureDetector(
+      onTap: showCameraBadge ? (_isUploadingAvatar ? null : _pickAndUploadAvatar) : null,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          CircleAvatar(
+            backgroundColor: _iconColor,
+            backgroundImage: (_avatarUrl != null && _avatarUrl!.isNotEmpty)
+                ? NetworkImage(_avatarUrl!)
+                : null,
+            child: (_avatarUrl == null || _avatarUrl!.isEmpty)
+                ? const Icon(Icons.person, color: Colors.white)
+                : null,
+            onBackgroundImageError: (error, stackTrace) {
+              debugPrint('Error loading avatar: $error');
+              if (mounted) {
+                setState(() {
+                  _avatarUrl = null;
+                });
+              }
+            },
+          ),
+          if (_isUploadingAvatar && showCameraBadge)
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.5),
+                  shape: BoxShape.circle,
+                ),
+                child: const Center(
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          if (showCameraBadge && !_isUploadingAvatar)
+            Positioned(
+              bottom: -2,
+              right: -2,
+              child: Container(
+                padding: const EdgeInsets.all(3),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF0288D1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.camera_alt,
+                  color: Colors.white,
+                  size: 14,
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -248,18 +375,465 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen>
     );
   }
 
-  // ── Submit Report ────────────────────────────────────────────────
+  // ──────────────────────────────────────────────────────────────────────────
+  // FEEDBACK METHODS
+  // ──────────────────────────────────────────────────────────────────────────
+
+  Future<void> _submitFeedbackWithNotes(
+      String imagePath,
+      String predicted,
+      String actual,
+      double confidence,
+      String notes,
+      ) async {
+    try {
+      print('📤 ===== SUBMITTING FEEDBACK =====');
+      print('📤 Image Path: $imagePath');
+      print('📤 Predicted: $predicted');
+      print('📤 Actual: $actual');
+      print('📤 Confidence: $confidence');
+      print('📤 Notes: $notes');
+
+      final token = await ApiService.getToken();
+      print('📤 Token: ${token != null ? "✅ Exists" : "❌ NULL"}');
+
+      final url = '${ApiService.baseUrl}/feedback';
+      print('📤 URL: $url');
+
+      final body = jsonEncode({
+        'image_path': imagePath,
+        'predicted': predicted,
+        'actual': actual,
+        'confidence': confidence,
+        'notes': notes.isNotEmpty
+            ? 'User feedback: $notes'
+            : 'User corrected from Flutter app',
+      });
+      print('📤 Body: $body');
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: body,
+      );
+
+      print('📤 Response Status: ${response.statusCode}');
+      print('📤 Response Body: ${response.body}');
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = jsonDecode(response.body);
+        print('✅ Feedback submitted successfully!');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('✅ Feedback submitted! Total: ${data['total_feedback']} feedbacks'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        print('❌ Feedback failed with status: ${response.statusCode}');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('❌ Failed to submit feedback: ${response.body}')),
+          );
+        }
+      }
+    } catch (e) {
+      print('❌ Error submitting feedback: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ Error submitting feedback: $e')),
+        );
+      }
+    }
+  }
+
+  Widget _buildFeedbackDialog(
+      String imagePath,
+      String predicted,
+      double confidence,
+      Completer<void> completer,
+      ) {
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: _gradientColors,
+            stops: const [0.0, 0.45, 1.0],
+          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: _cardBorder, width: 1.5),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.check_circle, size: 48, color: Colors.green.shade400),
+            const SizedBox(height: 12),
+            Text(
+              'Prediction: $predicted',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: _titleColor,
+              ),
+            ),
+            Text(
+              'Confidence: ${confidence.toStringAsFixed(1)}%',
+              style: TextStyle(fontSize: 14, color: _subtitleColor),
+            ),
+            const SizedBox(height: 16),
+            Divider(color: _cardBorder),
+            const SizedBox(height: 12),
+            Text(
+              'Was this prediction correct?',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: _titleColor),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      _submitFeedbackWithNotes(
+                        imagePath,
+                        predicted,
+                        predicted,
+                        confidence,
+                        '', // Empty notes for correct predictions
+                      );
+                      Navigator.pop(context);
+                      if (!completer.isCompleted) completer.complete();
+                    },
+                    icon: const Icon(Icons.thumb_up, size: 16),
+                    label: const Text('Yes'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _showCorrectTypeDialogSimple(imagePath, predicted, confidence, completer);
+                    },
+                    icon: const Icon(Icons.thumb_down, size: 16),
+                    label: const Text('No'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                if (!completer.isCompleted) completer.complete();
+              },
+              child: Text('Skip', style: TextStyle(color: _subtitleColor)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showCorrectTypeDialogSimple(
+      String imagePath,
+      String predicted,
+      double confidence,
+      Completer<void> parentCompleter,
+      ) {
+    final List<String> classes = ["Large", "Medium", "Small", "Normal"];
+    String selectedType = predicted;
+    final TextEditingController notesController = TextEditingController();
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: _gradientColors,
+              stops: const [0.0, 0.45, 1.0],
+            ),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: _cardBorder, width: 1.5),
+          ),
+          child: StatefulBuilder(
+            builder: (context, setStateDialog) => Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.edit, size: 40, color: _iconColor),
+                const SizedBox(height: 12),
+                Text(
+                  'What is the correct type?',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: _titleColor,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                ...classes.map((cls) => RadioListTile<String>(
+                  title: Text(cls, style: TextStyle(color: _titleColor)),
+                  value: cls,
+                  groupValue: selectedType,
+                  activeColor: _iconColor,
+                  onChanged: (value) {
+                    setStateDialog(() {
+                      selectedType = value!;
+                    });
+                  },
+                )),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: notesController,
+                  maxLines: 3,
+                  style: TextStyle(color: _inputTextColor, fontSize: 14),
+                  decoration: InputDecoration(
+                    hintText: 'Add optional notes... (e.g., pipe material, location details)',
+                    hintStyle: TextStyle(color: _hintColor, fontSize: 12),
+                    filled: true,
+                    fillColor: _cardBgOpaque,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: _cardBorder, width: 1.5),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: _iconColor, width: 2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    OutlinedButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        if (!parentCompleter.isCompleted) parentCompleter.complete();
+                      },
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        side: BorderSide(color: _iconColor, width: 1.5),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: Text('Cancel', style: TextStyle(color: _iconColor)),
+                    ),
+                    ElevatedButton(
+                      onPressed: () {
+                        _submitFeedbackWithNotes(
+                          imagePath,
+                          predicted,
+                          selectedType,
+                          confidence,
+                          notesController.text.trim(),
+                        );
+                        Navigator.pop(context);
+                        if (!parentCompleter.isCompleted) parentCompleter.complete();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('✅ Thank you for correcting the prediction!'),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _iconColor,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: const Text('Submit'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showCorrectTypeDialog(Map report) {
+    final List<String> classes = ["Large", "Medium", "Small", "Normal"];
+    String selectedType = report['type'] ?? 'Small';
+    final TextEditingController notesController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: _gradientColors,
+              stops: const [0.0, 0.45, 1.0],
+            ),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: _cardBorder, width: 1.5),
+          ),
+          child: StatefulBuilder(
+            builder: (context, setStateDialog) => Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.feedback_outlined, size: 40, color: _iconColor),
+                const SizedBox(height: 12),
+                Text(
+                  'What should this be?',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: _titleColor,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Predicted: ${report['type']} (${report['confidence']}%)',
+                  style: TextStyle(fontSize: 14, color: _subtitleColor),
+                ),
+                const SizedBox(height: 16),
+                ...classes.map((cls) => RadioListTile<String>(
+                  title: Text(cls, style: TextStyle(color: _titleColor)),
+                  value: cls,
+                  groupValue: selectedType,
+                  activeColor: _iconColor,
+                  onChanged: (value) {
+                    setStateDialog(() {
+                      selectedType = value!;
+                    });
+                  },
+                )),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: notesController,
+                  maxLines: 3,
+                  style: TextStyle(color: _inputTextColor, fontSize: 14),
+                  decoration: InputDecoration(
+                    hintText: 'Add optional notes... (e.g., pipe material, location details)',
+                    hintStyle: TextStyle(color: _hintColor, fontSize: 12),
+                    filled: true,
+                    fillColor: _cardBgOpaque,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: _cardBorder, width: 1.5),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: _iconColor, width: 2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        side: BorderSide(color: _iconColor, width: 1.5),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: Text('Cancel', style: TextStyle(color: _iconColor)),
+                    ),
+                    ElevatedButton(
+                      onPressed: () {
+                        _submitFeedbackWithNotes(
+                          report['image'] ?? '',
+                          report['type'] ?? '',
+                          selectedType,
+                          (report['confidence'] ?? 0).toDouble(),
+                          notesController.text.trim(),
+                        );
+                        Navigator.pop(context);
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('✅ Feedback submitted!'),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _iconColor,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: const Text('Submit Feedback'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // SUBMIT REPORT — FIXED
+  // ──────────────────────────────────────────────────────────────────────────
   void _submitReport() async {
     if (_fullNameController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter your full name!')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter your full name!')));
       return;
     }
     if (widget.image == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please take a photo first!')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please take a photo first!')));
       return;
     }
     if (_position == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Location not ready. Tap ↻ and wait.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Location not ready. Tap ↻ and wait.')));
       return;
     }
 
@@ -268,9 +842,7 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen>
     try {
       final token = await ApiService.getToken();
 
-      // ── Step 1: ML check via Laravel proxy ───────────────────────
-      // CHANGED: was http://3.27.75.51:5000/predict (plain HTTP, blocked by manifest)
-      // NOW:     https://geoflow.duckdns.org/api/predict (proxied through Laravel)
+      // ── ML Prediction ──
       var mlRequest = http.MultipartRequest(
         'POST',
         Uri.parse('${ApiService.baseUrl}/predict'),
@@ -286,12 +858,12 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen>
       final mlData = jsonDecode(mlBody);
 
       if (mlData['type'] == 'Not a Leak') {
-        setState(() => _isLoading = false);
+        if (mounted) setState(() => _isLoading = false);
         _showNotLeakDialog('${mlData['confidence']}');
         return;
       }
 
-      // ── Step 2: Submit report ────────────────────────────────────
+      // ── Submit Report ──
       var request = http.MultipartRequest(
         'POST',
         Uri.parse('${ApiService.baseUrl}/reports'),
@@ -311,21 +883,57 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen>
 
       if (response.statusCode == 422) {
         final body = jsonDecode(responseBody);
-        setState(() => _isLoading = false);
+        if (mounted) setState(() => _isLoading = false);
         _showNotLeakDialog('${body['confidence'] ?? '?'}');
         return;
       }
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Report submitted successfully!')));
-        Navigator.pushReplacementNamed(context, '/main');
+        // ── CRITICAL: Reset loading state FIRST ──
+        if (mounted) setState(() => _isLoading = false);
+
+        // Show success message
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Report submitted successfully!')));
+        }
+
+        // ── Show feedback dialog and WAIT for user action ──
+        final completer = Completer<void>();
+
+        if (mounted) {
+          await showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (_) => _buildFeedbackDialog(
+              widget.image!.path,
+              mlData['type'] as String,
+              (mlData['confidence'] as num).toDouble(),
+              completer,
+            ),
+          );
+
+          // Wait for completer to complete (user clicked Yes/No/Skip)
+          await completer.future;
+        }
+
+        // ── FIX: Navigate to MainScreen WITH bottom nav ──
+        if (mounted) {
+          Navigator.pushNamedAndRemoveUntil(context, '/main', (route) => false);
+        }
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $responseBody')));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Failed: $responseBody')));
+          setState(() => _isLoading = false);
+        }
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
-    } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e')));
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -335,6 +943,320 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen>
       case 'Under Review': return Colors.orange;
       default: return Colors.grey;
     }
+  }
+
+  void _showReportDetailSheet(Map report) {
+    final status = report['status'] ?? 'Pending';
+    final isPending = status == 'Pending';
+    bool isEditing = false;
+    bool saving = false;
+
+    final nameController = TextEditingController(text: report['full_name'] ?? '');
+    final locationController = TextEditingController(text: report['location'] ?? '');
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: _gradientColors,
+                stops: const [0.0, 0.45, 1.0],
+              ),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              border: Border.all(color: _cardBorder, width: 1.5),
+            ),
+            padding: const EdgeInsets.all(24),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40, height: 4,
+                      decoration: BoxDecoration(
+                        color: _cardBorder,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text('Report Details', style: TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.bold, color: _titleColor,
+                        )),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: _statusColor(status).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: _statusColor(status)),
+                        ),
+                        child: Text(status, style: TextStyle(
+                          fontSize: 12, color: _statusColor(status), fontWeight: FontWeight.w600,
+                        )),
+                      ),
+                    ],
+                  ),
+                  Text(report['report_id'] ?? '', style: TextStyle(fontSize: 13, color: _subtitleColor)),
+                  const SizedBox(height: 16),
+
+                  if (report['image'] != null)
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Image.network(
+                        'https://geoflow.duckdns.org/storage/${report['image']}',
+                        width: double.infinity, height: 180, fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          width: double.infinity, height: 180,
+                          color: _cardBg,
+                          child: Icon(Icons.broken_image, color: _cardBorder),
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 16),
+
+                  Text('Type', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _subtitleColor)),
+                  Text(report['type'] ?? 'N/A', style: TextStyle(fontSize: 14, color: _titleColor)),
+                  const SizedBox(height: 12),
+
+                  Text('Confidence', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _subtitleColor)),
+                  Text('${report['confidence'] ?? 'N/A'}%', style: TextStyle(fontSize: 14, color: _titleColor)),
+                  const SizedBox(height: 12),
+
+                  Text('Full Name', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _subtitleColor)),
+                  const SizedBox(height: 4),
+                  isEditing
+                      ? TextField(
+                    controller: nameController,
+                    style: TextStyle(color: _inputTextColor, fontSize: 14),
+                    decoration: InputDecoration(
+                      filled: true, fillColor: _cardBgOpaque,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _cardBorder, width: 1.5)),
+                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _iconColor, width: 2)),
+                    ),
+                  )
+                      : Text(report['full_name'] ?? 'N/A', style: TextStyle(fontSize: 14, color: _titleColor)),
+                  const SizedBox(height: 12),
+
+                  Text('Location', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _subtitleColor)),
+                  const SizedBox(height: 4),
+                  isEditing
+                      ? TextField(
+                    controller: locationController,
+                    maxLines: 2,
+                    style: TextStyle(color: _inputTextColor, fontSize: 14),
+                    decoration: InputDecoration(
+                      filled: true, fillColor: _cardBgOpaque,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _cardBorder, width: 1.5)),
+                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _iconColor, width: 2)),
+                    ),
+                  )
+                      : Text(report['location'] ?? 'N/A', style: TextStyle(fontSize: 14, color: _titleColor)),
+                  const SizedBox(height: 12),
+
+                  if (report['time'] != null) ...[
+                    Text('Date', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _subtitleColor)),
+                    Text('${report['time']}'.split('T').first, style: TextStyle(fontSize: 14, color: _titleColor)),
+                    const SizedBox(height: 12),
+                  ],
+
+                  // ── FEEDBACK SECTION ──
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue.shade200),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.feedback_outlined, size: 16, color: Colors.blue.shade700),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Help Improve the Model',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.blue.shade700,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Was this prediction correct? Your feedback helps the AI learn and improve!',
+                          style: TextStyle(fontSize: 12, color: Colors.blue.shade600),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  _submitFeedbackWithNotes(
+                                    report['image'] ?? '',
+                                    report['type'] ?? '',
+                                    report['type'] ?? '',
+                                    (report['confidence'] ?? 0).toDouble(),
+                                    '', // Empty notes for correct
+                                  );
+                                  Navigator.pop(context);
+                                },
+                                icon: const Icon(Icons.thumb_up, size: 16),
+                                label: const Text('Correct'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.green,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  Navigator.pop(context);
+                                  _showCorrectTypeDialog(report);
+                                },
+                                icon: const Icon(Icons.thumb_down, size: 16),
+                                label: const Text('Incorrect'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.red,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  if (!isPending) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.orange.shade200),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.lock_outline, size: 16, color: Colors.orange.shade700),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'This report is already $status and can no longer be edited.',
+                              style: TextStyle(fontSize: 12, color: Colors.orange.shade700),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+
+                  const SizedBox(height: 16),
+
+                  if (isPending)
+                    SizedBox(
+                      width: double.infinity,
+                      child: isEditing
+                          ? ElevatedButton(
+                        onPressed: saving ? null : () async {
+                          if (nameController.text.trim().isEmpty || locationController.text.trim().isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Name and location cannot be empty.')),
+                            );
+                            return;
+                          }
+                          setSheet(() => saving = true);
+                          try {
+                            final token = await ApiService.getToken();
+                            final res = await http.put(
+                              Uri.parse('${ApiService.baseUrl}/my-reports/${report['id']}'),
+                              headers: {
+                                'Authorization': 'Bearer $token',
+                                'Accept': 'application/json',
+                                'Content-Type': 'application/json',
+                              },
+                              body: jsonEncode({
+                                'full_name': nameController.text.trim(),
+                                'location': locationController.text.trim(),
+                              }),
+                            );
+                            final body = jsonDecode(res.body);
+                            if (res.statusCode == 200) {
+                              Navigator.pop(ctx);
+                              _fetchMyReports();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Report updated successfully!')),
+                              );
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(body['message'] ?? 'Update failed')),
+                              );
+                            }
+                          } catch (e) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Error: $e')),
+                            );
+                          }
+                          setSheet(() => saving = false);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _iconColor,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        child: saving
+                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                            : const Text('Save Changes', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600)),
+                      )
+                          : OutlinedButton.icon(
+                        onPressed: () => setSheet(() => isEditing = true),
+                        icon: Icon(Icons.edit_outlined, color: _iconColor, size: 18),
+                        label: Text('Edit Report', style: TextStyle(color: _iconColor, fontWeight: FontWeight.w600)),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          side: BorderSide(color: _iconColor, width: 1.5),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 8),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -353,13 +1275,20 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen>
                 child: Row(
                   children: [
                     GestureDetector(
-                      onTap: () async { await Navigator.pushNamed(context, '/profile'); _fetchUserProfile(); },
-                      child: _buildAvatar(),
+                      onTap: () async {
+                        await Navigator.pushNamed(context, '/profile');
+                        _fetchUserProfile();
+                      },
+                      child: _buildAvatar(showCameraBadge: false),
                     ),
                     Expanded(child: Center(child: Text('GeoFlow', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: _titleColor)))),
                     IconButton(
                       icon: Icon(Icons.settings_outlined, color: _iconColor),
-                      onPressed: () async { await Navigator.pushNamed(context, '/settings'); _loadTheme(); _fetchUserProfile(); },
+                      onPressed: () async {
+                        await Navigator.pushNamed(context, '/settings');
+                        _loadTheme();
+                        _fetchUserProfile();
+                      },
                     ),
                   ],
                 ),
@@ -470,6 +1399,7 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen>
                             decoration: BoxDecoration(color: _cardBg, borderRadius: BorderRadius.circular(12), border: Border.all(color: _cardBorder), boxShadow: [BoxShadow(color: const Color(0xFF0288D1).withOpacity(0.07), blurRadius: 6, offset: const Offset(0, 2))]),
                             child: ListTile(
                               contentPadding: const EdgeInsets.all(12),
+                              onTap: () => _showReportDetailSheet(r),
                               leading: r['image'] != null
                                   ? ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network('https://geoflow.duckdns.org/storage/${r['image']}', width: 56, height: 56, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Icon(Icons.image, color: _cardBorder)))
                                   : Icon(Icons.image, color: _cardBorder),
