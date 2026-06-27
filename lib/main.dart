@@ -8,6 +8,9 @@ import 'screens/profile_screen.dart';
 import 'screens/help_support_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/forgot_password_screen.dart';
+import 'screens/assigned_reports_screen.dart';
+import 'screens/pending_approval_screen.dart';
+import 'screens/main_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -27,15 +30,17 @@ class MyApp extends StatelessWidget {
       ),
       initialRoute: '/login',
       routes: {
-        '/login': (context) => const LoginScreen(),
-        '/register': (context) => const RegisterScreen(),
-        '/home': (context) => const HomeScreen(),
-        '/main': (context) => const MainScreen(),
-        '/settings': (context) => const SettingsScreen(),
-        '/profile': (context) => const ProfileScreen(),
-        '/help': (context) => const HelpSupportScreen(),
-        '/notifications': (context) => const NotificationsScreen(), // ✅ added
-        '/forgot-password': (context) => const ForgotPasswordScreen(),
+        '/login':            (context) => const LoginScreen(),
+        '/register':         (context) => const RegisterScreen(),
+        '/home':             (context) => const HomeScreen(),
+        '/main':             (context) => const MainScreen(),
+        '/settings':         (context) => const SettingsScreen(),
+        '/profile':          (context) => const ProfileScreen(),
+        '/help':             (context) => const HelpSupportScreen(),
+        '/notifications':    (context) => const NotificationsScreen(),
+        '/forgot-password':  (context) => const ForgotPasswordScreen(),
+        '/assignments':      (context) => const AssignedReportsScreen(),
+        '/pending-approval': (context) => const PendingApprovalScreen(),
       },
     );
   }
