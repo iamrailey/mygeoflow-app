@@ -8,7 +8,9 @@ import 'notifications_screen.dart';
 import 'package:http/http.dart' as http;
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final VoidCallback? onViewAssignments; // 👈 add this
+
+  const HomeScreen({super.key, this.onViewAssignments}); // 👈 add this
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -72,7 +74,17 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() {
           _userName = data['name'] ?? 'User';
           _userEmail = data['email'] ?? '';
-          _avatarUrl = data['avatar_url'];
+
+          // Fix relative avatar URLs
+          final raw = data['avatar_url']?.toString() ?? '';
+          if (raw.isEmpty) {
+            _avatarUrl = null;
+          } else if (raw.startsWith('http')) {
+            _avatarUrl = raw;
+          } else {
+            // e.g. "avatars/filename.jpg" → full URL
+            _avatarUrl = 'https://geoflow.duckdns.org/storage/$raw';
+          }
         });
 
         final hasNoPhone = data['phone'] == null || data['phone'].toString().isEmpty;
@@ -140,15 +152,33 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildAvatar({double radius = 20}) {
+    final hasAvatar = _avatarUrl != null && _avatarUrl!.isNotEmpty;
+    if (hasAvatar) {
+      return ClipOval(
+        child: Image.network(
+          _avatarUrl!,
+          width: radius * 2,
+          height: radius * 2,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) {
+            if (mounted) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) setState(() => _avatarUrl = null);
+              });
+            }
+            return CircleAvatar(
+              radius: radius,
+              backgroundColor: const Color(0xFF0288D1),
+              child: Icon(Icons.person, size: radius * 1.2, color: Colors.white),
+            );
+          },
+        ),
+      );
+    }
     return CircleAvatar(
       radius: radius,
       backgroundColor: const Color(0xFF0288D1),
-      backgroundImage: (_avatarUrl != null && _avatarUrl!.isNotEmpty)
-          ? NetworkImage(_avatarUrl!)
-          : null,
-      child: (_avatarUrl == null || _avatarUrl!.isEmpty)
-          ? Icon(Icons.person, size: radius * 1.2, color: Colors.white)
-          : null,
+      child: Icon(Icons.person, size: radius * 1.2, color: Colors.white),
     );
   }
 
@@ -558,6 +588,26 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                   ),
+
+                  if (widget.onViewAssignments != null) ...[
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: widget.onViewAssignments,
+                        icon: const Icon(Icons.assignment_outlined),
+                        label: const Text('View Assignments'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: _iconColor,
+                          side: BorderSide(color: _iconColor, width: 1.5),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

@@ -150,13 +150,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
       setState(() => _isLoading = false);
 
       if (response.statusCode == 200) {
-        // Refresh the avatar URL from the server response if present
-        if (body['avatar_url'] != null &&
-            body['avatar_url'].toString().isNotEmpty) {
-          setState(() {
-            _avatarUrl =
-            '${ApiService.baseUrl}${body['avatar_url']}';
-          });
+        // Upload avatar separately if a new image was picked
+        if (_profileImage != null) {
+          final avatarRequest = http.MultipartRequest(
+            'POST',
+            Uri.parse('${ApiService.baseUrl}/user/avatar'),
+          );
+          avatarRequest.headers['Authorization'] = 'Bearer $token';
+          avatarRequest.headers['Accept'] = 'application/json';
+          avatarRequest.files.add(
+            await http.MultipartFile.fromPath('avatar', _profileImage!.path),
+          );
+
+          // 👇 ADD THESE
+          print('Image path: ${_profileImage!.path}');
+          print('Image exists: ${await File(_profileImage!.path).exists()}');
+          print('Sending to: ${ApiService.baseUrl}/user/avatar');
+
+          final avatarStreamed = await avatarRequest.send();
+
+          final avatarBody = jsonDecode(await avatarStreamed.stream.bytesToString());
+          print('Avatar status: ${avatarStreamed.statusCode}');
+          print('Avatar response: $avatarBody');
+
+          if (avatarStreamed.statusCode == 200) {
+            final raw = avatarBody['avatar_url']?.toString() ?? '';
+            if (raw.isNotEmpty) {
+              setState(() {
+                _avatarUrl = raw.startsWith('http')
+                    ? raw
+                    : 'https://geoflow.duckdns.org/storage/$raw';
+              });
+            }
+          }
         }
         _showSuccess();
       } else {
@@ -309,33 +335,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     shape: BoxShape.circle,
                                     boxShadow: [
                                       BoxShadow(
-                                        color: _iconColor
-                                            .withOpacity(0.3),
+                                        color: _iconColor.withOpacity(0.3),
                                         blurRadius: 12,
                                         offset: const Offset(0, 4),
                                       ),
                                     ],
                                   ),
-                                  child: CircleAvatar(
-                                    radius: 50,
-                                    backgroundColor: _avatarBg,
-                                    backgroundImage:
-                                    _profileImage != null
-                                        ? FileImage(_profileImage!)
-                                    as ImageProvider
-                                        : (_avatarUrl != null &&
-                                        _avatarUrl!
-                                            .isNotEmpty)
-                                        ? NetworkImage(
-                                        _avatarUrl!)
-                                        : null,
-                                    child: (_profileImage == null &&
-                                        (_avatarUrl == null ||
-                                            _avatarUrl!.isEmpty))
-                                        ? Icon(Icons.person,
-                                        size: 55,
-                                        color: _iconColor)
-                                        : null,
+                                  // 👇 REPLACE from here (the old CircleAvatar) with this:
+                                  child: SizedBox(
+                                    width: 100,
+                                    height: 100,
+                                    child: _profileImage != null
+                                        ? ClipOval(child: Image.file(_profileImage!, width: 100, height: 100, fit: BoxFit.cover))
+                                        : (_avatarUrl != null && _avatarUrl!.isNotEmpty)
+                                        ? ClipOval(
+                                      child: Image.network(
+                                        _avatarUrl!,
+                                        width: 100,
+                                        height: 100,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) => CircleAvatar(
+                                          radius: 50,
+                                          backgroundColor: _avatarBg,
+                                          child: Icon(Icons.person, size: 55, color: _iconColor),
+                                        ),
+                                      ),
+                                    )
+                                        : CircleAvatar(
+                                      radius: 50,
+                                      backgroundColor: _avatarBg,
+                                      child: Icon(Icons.person, size: 55, color: _iconColor),
+                                    ),
                                   ),
                                 ),
                                 Positioned(

@@ -160,28 +160,40 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen>
   List<Color> get _gradientColors => [_bgStart, _bgMid, _bgEnd];
 
   Widget _buildAvatar({bool showCameraBadge = false}) {
+    final hasAvatar = _avatarUrl != null && _avatarUrl!.isNotEmpty;
+    final double radius = 20;
+
+    Widget avatar = hasAvatar
+        ? ClipOval(
+      child: Image.network(
+        _avatarUrl!,
+        width: radius * 2,
+        height: radius * 2,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) setState(() => _avatarUrl = null);
+          });
+          return CircleAvatar(
+            radius: radius,
+            backgroundColor: _iconColor,
+            child: const Icon(Icons.person, color: Colors.white),
+          );
+        },
+      ),
+    )
+        : CircleAvatar(
+      radius: radius,
+      backgroundColor: _iconColor,
+      child: const Icon(Icons.person, color: Colors.white),
+    );
+
     return GestureDetector(
       onTap: showCameraBadge ? (_isUploadingAvatar ? null : _pickAndUploadAvatar) : null,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          CircleAvatar(
-            backgroundColor: _iconColor,
-            backgroundImage: (_avatarUrl != null && _avatarUrl!.isNotEmpty)
-                ? NetworkImage(_avatarUrl!)
-                : null,
-            child: (_avatarUrl == null || _avatarUrl!.isEmpty)
-                ? const Icon(Icons.person, color: Colors.white)
-                : null,
-            onBackgroundImageError: (error, stackTrace) {
-              debugPrint('Error loading avatar: $error');
-              if (mounted) {
-                setState(() {
-                  _avatarUrl = null;
-                });
-              }
-            },
-          ),
+          avatar,
           if (_isUploadingAvatar && showCameraBadge)
             Positioned.fill(
               child: Container(
@@ -191,31 +203,19 @@ class _ManageLeaksScreenState extends State<ManageLeaksScreen>
                 ),
                 child: const Center(
                   child: SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
+                    width: 20, height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                   ),
                 ),
               ),
             ),
           if (showCameraBadge && !_isUploadingAvatar)
             Positioned(
-              bottom: -2,
-              right: -2,
+              bottom: -2, right: -2,
               child: Container(
                 padding: const EdgeInsets.all(3),
-                decoration: const BoxDecoration(
-                  color: Color(0xFF0288D1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.camera_alt,
-                  color: Colors.white,
-                  size: 14,
-                ),
+                decoration: const BoxDecoration(color: Color(0xFF0288D1), shape: BoxShape.circle),
+                child: const Icon(Icons.camera_alt, color: Colors.white, size: 14),
               ),
             ),
         ],
